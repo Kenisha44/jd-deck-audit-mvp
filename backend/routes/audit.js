@@ -63,11 +63,49 @@ function countBullets(text = '') {
   return Math.max(lineBullets, symbolBullets);
 }
 
+function decodeXmlText(value = '') {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPptxSlides(filePath) {
+  try {
+    const zip = new AdmZip(filePath);
+    const slideEntries = zip
+      .getEntries()
+      .filter(entry => /^ppt\/slides\/slide\d+\.xml$/i.test(entry.entryName))
+      .sort((a, b) => {
+        const aNum = Number(a.entryName.match(/slide(\d+)\.xml/i)?.[1] || 0);
+        const bNum = Number(b.entryName.match(/slide(\d+)\.xml/i)?.[1] || 0);
+        return aNum - bNum;
+      });
+
+    return slideEntries.map((entry, index) => {
+      const xml = entry.getData().toString('utf8');
+      const matches = [...xml.matchAll(/<a:t[^>]*>(.*?)<\/a:t>/g)].map(match => decodeXmlText(match[1]));
+      const text = matches.filter(Boolean).join(' ').trim();
+      const title = matches.find(piece => piece.length > 4 && piece.length < 90) || `Slide ${index + 1}`;
+      return {
+        number: index + 1,
+        title,
+        text: text || `Slide ${index + 1}`
+      };
+    });
+  } catch (error) {
+    return [];
+  }
+}
+
 function estimateSlideCount(filePath, ext) {
   try {
     if (ext === '.pptx') {
-      const zip = new AdmZip(filePath);
-      return zip.getEntries().filter(entry => /^ppt\/slides\/slide\d+\.xml$/i.test(entry.entryName)).length;
+      return extractPptxSlides(filePath).length;
     }
 
     if (ext === '.pdf') {
@@ -101,9 +139,6 @@ function analyzeText(text = '') {
   const recommendationWords = countMatches(normalized, RECOMMENDATION_WORDS);
   const riskWords = countMatches(normalized, RISK_WORDS);
   const positiveWords = countMatches(normalized, POSITIVE_WORDS);
-  const hasQuestion = /\?/.test(normalized);
-  const hasColonHeadline = /:/.test(normalized.slice(0, 120));
-  const titleCaseOveruse = (normalized.match(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g) || []).length > 5;
 
   return {
     wordCount,
@@ -121,10 +156,7 @@ function analyzeText(text = '') {
     actionWords,
     recommendationWords,
     riskWords,
-    positiveWords,
-    hasQuestion,
-    hasColonHeadline,
-    titleCaseOveruse
+    positiveWords
   };
 }
 
@@ -171,7 +203,15 @@ function riskLabel(overall, stats) {
 }
 
 function unique(list, limit = 5) {
-  return [...new Set(list)].slice(0, limit);
+  return [...new Set(list.filter(Boolean))].slice(0, limit);
+}
+
+function averageScores(slides) {
+  const keys = ['clarity', 'storytelling', 'executiveReadiness', 'visualSimplicity', 'dataStorytelling', 'actionability'];
+  return keys.reduce((acc, key) => {
+    acc[key] = clamp(slides.reduce((sum, slide) => sum + slide.scores[key], 0) / slides.length);
+    return acc;
+  }, {});
 }
 
 function buildFindings(stats, scores, source) {
@@ -248,34 +288,167 @@ function buildRewrite({ title = 'Executive Update', text = '', stats, scores }) 
 }
 
 function presentationDNA(scores) {
-  const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const remap = {
+    executiveCommunication: clamp((scores.clarity + scores.executiveReadiness) / 2),
+    storytelling: scores.storytelling,
+    visualDesign: scores.visualSimplicity,
+    readability: scores.clarity,
+    executivePresence: clamp((scores.executiveReadiness + scores.actionability) / 2),
+    brandConsistency: clamp((scores.visualSimplicity + scores.clarity) / 2)
+  };
+
+  const entries = Object.entries(remap).sort((a, b) => b[1] - a[1]);
   return {
-    topStrength: labelForScore(entries[0][0]),
-    biggestOpportunity: labelForScore(entries[entries.length - 1][0]),
-    profile: entries.map(([key, value]) => ({ key, label: labelForScore(key), score: value }))
+    topStrength: labelForDNA(entries[0][0]),
+    biggestOpportunity: labelForDNA(entries[entries.length - 1][0]),
+    profile: entries.map(([key, value]) => ({ key, label: labelForDNA(key), score: value }))
   };
 }
 
-function labelForScore(key) {
+function labelForDNA(key) {
   return ({
-    clarity: 'Clarity',
+    executiveCommunication: 'Executive Communication',
     storytelling: 'Storytelling',
-    executiveReadiness: 'Executive Readiness',
-    visualSimplicity: 'Visual Simplicity',
-    dataStorytelling: 'Data Storytelling',
-    actionability: 'Actionability'
+    visualDesign: 'Visual Design',
+    readability: 'Readability',
+    executivePresence: 'Executive Presence',
+    brandConsistency: 'Brand Consistency'
   })[key] || key;
 }
 
-function createAudit({ name = 'Untitled Deck', text = '', source = 'file', slideCount = null } = {}) {
+function buildSlideReview(slide) {
+  const stats = analyzeText(slide.text || slide.title);
+  const scores = scoreFromStats(stats, 'slide');
+  const overall = clamp(Object.values(scores).reduce((sum, value) => sum + value, 0) / Object.values(scores).length);
+  const findings = buildFindings(stats, scores, 'slide');
+
+  return {
+    number: slide.number,
+    title: slide.title || `Slide ${slide.number}`,
+    score: overall,
+    summary: `${gradeFromOverall(overall)}. ${findings.weaknesses[0] || findings.strengths[0]}`,
+    issues: findings.weaknesses.slice(0, 3),
+    fixes: findings.fixes.slice(0, 3),
+    scores
+  };
+}
+
+function fallbackSlides(text, name) {
+  const sentences = splitSentences(text);
+  if (sentences.length <= 2) {
+    return [{ number: 1, title: name, text: text || name }];
+  }
+
+  const chunks = [];
+  for (let index = 0; index < sentences.length; index += 3) {
+    chunks.push(sentences.slice(index, index + 3).join('. '));
+  }
+
+  return chunks.slice(0, MAX_SLIDES).map((chunk, index) => ({
+    number: index + 1,
+    title: index === 0 ? name : `Slide ${index + 1}`,
+    text: chunk
+  }));
+}
+
+function buildPriorityFixes({ findings, scores, stats, slides }) {
+  const fixes = [];
+
+  if (scores.actionability < 75 || !stats.recommendationWords) {
+    fixes.push({
+      severity: 'Critical',
+      title: 'Add a clear executive recommendation',
+      reason: 'The audience needs to know what decision, approval, or next step is required.'
+    });
+  }
+
+  if (scores.dataStorytelling < 75 || !stats.numbers) {
+    fixes.push({
+      severity: 'Critical',
+      title: 'Attach the message to evidence',
+      reason: 'A metric, trend, benchmark, or financial signal makes the audit feel decision-ready.'
+    });
+  }
+
+  const weakestSlide = slides?.slice().sort((a, b) => a.score - b.score)[0];
+  if (weakestSlide && weakestSlide.score < 78) {
+    fixes.push({
+      severity: 'Moderate',
+      title: `Prioritize Slide ${weakestSlide.number}: ${weakestSlide.title}`,
+      reason: weakestSlide.fixes[0] || 'This slide has the highest improvement potential.'
+    });
+  }
+
+  if (stats.longSentences || scores.clarity < 78) {
+    fixes.push({
+      severity: 'Moderate',
+      title: 'Shorten the scan path',
+      reason: 'Long sentences slow down executive review. Convert them into insight-led bullets.'
+    });
+  }
+
+  if (scores.visualSimplicity < 78 || stats.bullets > 6) {
+    fixes.push({
+      severity: 'Minor',
+      title: 'Reduce visual and text density',
+      reason: 'Move supporting detail to notes or appendix so the main slide carries one decision.'
+    });
+  }
+
+  findings.fixes.forEach((fix, index) => {
+    fixes.push({
+      severity: index < 1 ? 'Moderate' : 'Minor',
+      title: fix,
+      reason: 'Rule-based audit recommendation.'
+    });
+  });
+
+  return unique(fixes.map(item => JSON.stringify(item)), 5).map(item => JSON.parse(item));
+}
+
+function buildHealthReport({ overall, grade, dna, metrics }) {
+  const businessImpact = overall >= 84 ? 'High' : overall >= 72 ? 'Moderate' : 'At Risk';
+  const estimatedImprovementTime = overall >= 84 ? '10–15 minutes' : overall >= 72 ? '20–35 minutes' : '45–60 minutes';
+
+  return {
+    businessImpact,
+    grade,
+    topStrength: dna.topStrength,
+    biggestOpportunity: dna.biggestOpportunity,
+    estimatedImprovementTime,
+    recommendedNextStep: metrics.riskLevel === 'High'
+      ? 'Run a JD professional audit before the deck is shared with executives.'
+      : 'Apply the priority fixes, then re-audit for score improvement.'
+  };
+}
+
+function createAudit({ name = 'Untitled Deck', text = '', source = 'file', slideCount = null, fileSize = null, rawSlides = [] } = {}) {
   const extension = path.extname(name).toUpperCase().replace('.', '') || (source === 'text' ? 'TEXT' : 'DECK');
-  const workingText = text || name.replace(/[-_]/g, ' ');
+  const slideInputs = rawSlides.length ? rawSlides : fallbackSlides(text || name.replace(/[-_]/g, ' '), name);
+  const slides = slideInputs.slice(0, MAX_SLIDES).map(buildSlideReview);
+  const workingText = rawSlides.length ? rawSlides.map(slide => slide.text).join(' ') : (text || name.replace(/[-_]/g, ' '));
   const stats = analyzeText(workingText);
-  const scores = scoreFromStats(stats, source);
+  const scores = slides.length > 1 ? averageScores(slides) : scoreFromStats(stats, source);
   const overall = clamp(Object.values(scores).reduce((sum, value) => sum + value, 0) / Object.values(scores).length);
   const grade = gradeFromOverall(overall);
   const findings = buildFindings(stats, scores, source);
   const dna = presentationDNA(scores);
+  const metrics = {
+    estimatedSlides: slideCount || slides.length || (source === 'text' ? Math.max(1, Math.ceil(stats.wordCount / 85)) : null),
+    estimatedWords: stats.wordCount,
+    fileSize,
+    textDensity: densityLabel(stats),
+    riskLevel: riskLabel(overall, stats),
+    avgSentenceLength: Math.round(stats.avgSentenceLength || 0),
+    longSentences: stats.longSentences,
+    numericSignals: stats.numbers + stats.money,
+    actionSignals: stats.actionWords + stats.recommendationWords,
+    hedgeSignals: stats.hedgeWords,
+    jargonSignals: stats.jargonWords,
+    estimatedAuditTime: slides.length > 18 ? '15–30 seconds' : '5–10 seconds'
+  };
+  const priorityFixes = buildPriorityFixes({ findings, scores, stats, slides });
+  const healthReport = buildHealthReport({ overall, grade, dna, metrics });
 
   return {
     deckName: name,
@@ -286,18 +459,10 @@ function createAudit({ name = 'Untitled Deck', text = '', source = 'file', slide
     grade,
     scores,
     dna,
-    metrics: {
-      estimatedSlides: slideCount || (source === 'text' ? Math.max(1, Math.ceil(stats.wordCount / 85)) : null),
-      estimatedWords: stats.wordCount,
-      textDensity: densityLabel(stats),
-      riskLevel: riskLabel(overall, stats),
-      avgSentenceLength: Math.round(stats.avgSentenceLength || 0),
-      longSentences: stats.longSentences,
-      numericSignals: stats.numbers + stats.money,
-      actionSignals: stats.actionWords + stats.recommendationWords,
-      hedgeSignals: stats.hedgeWords,
-      jargonSignals: stats.jargonWords
-    },
+    metrics,
+    healthReport,
+    priorityFixes,
+    slides,
     summary: `This ${source === 'text' ? 'slide copy' : 'deck'} is rated ${grade.toLowerCase()}. Top strength: ${dna.topStrength}. Biggest opportunity: ${dna.biggestOpportunity}. The fastest improvement path is to pair clearer takeaway headlines with evidence, recommendation language, and a visible next decision.`,
     strengths: findings.strengths,
     weaknesses: findings.weaknesses,
@@ -335,7 +500,8 @@ router.post('/', (req, res, next) => {
   }
 
   const ext = path.extname(req.file.originalname).toLowerCase();
-  const slideCount = estimateSlideCount(req.file.path, ext);
+  const rawSlides = ext === '.pptx' ? extractPptxSlides(req.file.path) : [];
+  const slideCount = rawSlides.length || estimateSlideCount(req.file.path, ext);
 
   if (slideCount && slideCount > MAX_SLIDES) {
     return res.status(413).json({
@@ -343,7 +509,8 @@ router.post('/', (req, res, next) => {
     });
   }
 
-  res.json(createAudit({ name: req.file.originalname, source: 'file', slideCount }));
+  const fileSize = `${(req.file.size / (1024 * 1024)).toFixed(1)} MB`;
+  res.json(createAudit({ name: req.file.originalname, source: 'file', slideCount, fileSize, rawSlides }));
 });
 
 router.post('/text', (req, res) => {
@@ -362,8 +529,25 @@ router.post('/rewrite', (req, res) => {
 });
 
 router.get('/demo', (req, res) => {
-  const demoText = `Q3 revenue increased 18% year over year, but enterprise churn rose to 7%. Customer interviews show onboarding delays are the main constraint. We recommend prioritizing onboarding automation before expanding the outbound sales campaign in Q4.`;
-  res.json(createAudit({ name: 'Demo Executive Deck.pptx', text: demoText, source: 'demo', slideCount: 8 }));
+  const demoSlides = [
+    {
+      number: 1,
+      title: 'Q3 Revenue Update',
+      text: 'Q3 revenue increased 18% year over year. Enterprise renewals drove 62% of growth, but churn rose to 7%.'
+    },
+    {
+      number: 2,
+      title: 'Customer Onboarding Risk',
+      text: 'Customer interviews show onboarding delays are the main constraint. The team should prioritize onboarding automation before expanding the outbound sales campaign.'
+    },
+    {
+      number: 3,
+      title: 'Recommended Next Step',
+      text: 'We recommend approving a 30-day onboarding automation sprint with one product owner, one customer success lead, and a Q4 adoption milestone.'
+    }
+  ];
+  const demoText = demoSlides.map(slide => slide.text).join(' ');
+  res.json(createAudit({ name: 'Demo Executive Deck.pptx', text: demoText, source: 'demo', slideCount: demoSlides.length, fileSize: '1.2 MB', rawSlides: demoSlides }));
 });
 
 export default router;
