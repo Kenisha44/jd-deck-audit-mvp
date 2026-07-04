@@ -7,6 +7,7 @@
   import SlideNavigator from '../components/dashboard/SlideNavigator.svelte';
   import PriorityQueue from '../components/dashboard/PriorityQueue.svelte';
   import ExecutiveHealthReport from '../components/dashboard/ExecutiveHealthReport.svelte';
+  import MetricCard from '../components/common/MetricCard.svelte';
 
   let selectedFile = null;
   let loading = false;
@@ -204,15 +205,18 @@
     </button>
   </div>
 
+  <div class="metrics">
+    <MetricCard title="Overall Score" value={audit?.overall || '--'} subtitle="Executive Readiness" color="#2563eb" />
+    <MetricCard title="Slides" value={audit?.slides?.length || '--'} subtitle="Slides Reviewed" color="#16a34a" />
+    <MetricCard title="Business Impact" value={audit?.healthReport?.businessImpact || '--'} subtitle="Estimated Impact" color="#f59e0b" />
+    <MetricCard title="Priority Fixes" value={audit?.priorityQueue?.length || '0'} subtitle="Recommended Changes" color="#dc2626" />
+  </div>
+
   <div class="workspace-grid">
     <div class="upload-section panel sharp-panel">
       <div class="mode-tabs">
-        <button class:active={activeMode === 'upload'} on:click={() => (activeMode = 'upload')}>
-          Upload Deck
-        </button>
-        <button class:active={activeMode === 'paste'} on:click={() => (activeMode = 'paste')}>
-          Paste Text
-        </button>
+        <button class:active={activeMode === 'upload'} on:click={() => (activeMode = 'upload')}>Upload Deck</button>
+        <button class:active={activeMode === 'paste'} on:click={() => (activeMode = 'paste')}>Paste Text</button>
       </div>
 
       {#if activeMode === 'upload'}
@@ -277,21 +281,24 @@
 
   {#if audit}
     <div class="dashboard-grid">
-      <PresentationDNA dna={audit.dna} />
+      <div class="workspace-column">
+        <PresentationDNA dna={audit.dna} />
+        <PriorityQueue priorityQueue={audit.priorityQueue} />
+      </div>
 
-      <SlideNavigator
-        slides={audit.slides}
-        selectedSlide={selectedSlide}
-        activeSlideIndex={activeSlideIndex}
-        setActiveSlide={setActiveSlide}
-      />
+      <div class="insights-column">
+        <SlideNavigator
+          slides={audit.slides}
+          selectedSlide={selectedSlide}
+          activeSlideIndex={activeSlideIndex}
+          setActiveSlide={setActiveSlide}
+        />
 
-      <PriorityQueue priorityQueue={audit.priorityQueue} />
-
-      <ExecutiveHealthReport
-        audit={audit}
-        exportReport={exportReport}
-      />
+        <ExecutiveHealthReport
+          audit={audit}
+          exportReport={exportReport}
+        />
+      </div>
     </div>
   {/if}
 </section>
@@ -318,5 +325,44 @@
   .dashboard-header p {
     color: var(--muted);
     margin-top: 8px;
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+  }
+
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .workspace-column,
+  .insights-column {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  @media (max-width: 1200px) {
+    .metrics,
+    .dashboard-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 700px) {
+    .metrics,
+    .dashboard-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .dashboard-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
 </style>
