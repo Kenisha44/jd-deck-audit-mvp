@@ -1,24 +1,29 @@
 <script>
-  import Sidebar from "./Sidebar.svelte";
-  import Topbar from "./Topbar.svelte";
+  import Sidebar from './Sidebar.svelte';
+  import Topbar from './Topbar.svelte';
+
+  export let activePage = 'dashboard';
+  export let setActivePage = () => {};
+  export let darkMode = false;
+  export let toggleDarkMode = () => {};
 </script>
 
 <div class="layout">
+  <Sidebar
+    {activePage}
+    {setActivePage}
+  />
 
-    <Sidebar />
+  <div class="content">
+    <Topbar
+      {darkMode}
+      {toggleDarkMode}
+    />
 
-    <div class="content">
-
-        <Topbar />
-
-        <main>
-
-            <slot />
-
-        </main>
-
-    </div>
-
+    <main>
+      <slot />
+    </main>
+  </div>
 </div>
 
 <style>
@@ -27,7 +32,7 @@
     display:grid;
     grid-template-columns:260px 1fr;
     min-height:100vh;
-    background:#f8fafc;
+    background:var(--background);
 }
 
 .content{

@@ -1,179 +1,142 @@
 <script>
+  export let darkMode = false;
+  export let toggleDarkMode = () => {};
 
-let search = "";
-
+  let search = '';
 </script>
 
 <header class="topbar">
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
 
-    <div class="left">
+    <input
+      bind:value={search}
+      aria-label="Search audits and projects"
+      placeholder="Search audits, projects..."
+    />
+  </div>
 
-        <input
-            bind:value={search}
-            placeholder="Search audits, projects..."
-        />
+  <div class="actions">
+    <button
+      class="icon-button"
+      title={darkMode ? 'Use light mode' : 'Use dark mode'}
+      aria-label={darkMode ? 'Use light mode' : 'Use dark mode'}
+      on:click={toggleDarkMode}
+    >
+      {darkMode ? '☀️' : '🌙'}
+    </button>
 
-    </div>
+    <button
+      class="icon-button notification"
+      title="Notifications"
+      aria-label="Notifications"
+    >
+      🔔
+      <span class="notification-dot"></span>
+    </button>
 
-    <div class="right">
-
-        <button class="icon-btn" title="Toggle Theme">
-            🌙
-        </button>
-
-        <button class="icon-btn notification" title="Notifications">
-            🔔
-            <span class="dot"></span>
-        </button>
-
-        <div class="avatar">
-            JD
-        </div>
-
-    </div>
-
+    <button class="avatar" aria-label="Open profile menu">
+      JD
+    </button>
+  </div>
 </header>
 
 <style>
-
-.topbar{
-
-display:flex;
-
-justify-content:space-between;
-
-align-items:center;
-
-padding:18px 32px;
-
-background:white;
-
-border-bottom:1px solid #e5e7eb;
-
-position:sticky;
-
-top:0;
-
-z-index:20;
-
-}
-
-.left{
-
-flex:1;
-
-}
-
-input{
-
-width:420px;
-
-max-width:100%;
-
-padding:12px 16px;
-
-border:1px solid #d1d5db;
-
-border-radius:10px;
-
-font-size:14px;
-
-transition:.2s;
-
-outline:none;
-
-}
-
-input:focus{
-
-border-color:#2563eb;
-
-box-shadow:0 0 0 3px rgba(37,99,235,.15);
-
-}
-
-.right{
-
-display:flex;
-
-align-items:center;
-
-gap:14px;
-
-}
-
-.icon-btn{
-
-position:relative;
-
-width:42px;
-
-height:42px;
-
-display:grid;
-
-place-items:center;
-
-border:none;
-
-background:#f8fafc;
-
-border-radius:10px;
-
-cursor:pointer;
-
-font-size:18px;
-
-transition:.2s;
-
-}
-
-.icon-btn:hover{
-
-background:#e2e8f0;
-
-}
-
-.notification .dot{
-
-position:absolute;
-
-top:9px;
-
-right:10px;
-
-width:8px;
-
-height:8px;
-
-background:#ef4444;
-
-border-radius:50%;
-
-}
-
-.avatar{
-
-width:42px;
-
-height:42px;
-
-display:grid;
-
-place-items:center;
-
-background:#2563eb;
-
-color:white;
-
-font-weight:700;
-
-border-radius:10px;
-
-font-size:14px;
-
-cursor:pointer;
-
-}
-
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    min-height: 76px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    padding: 14px 32px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .search-wrap {
+    width: min(440px, 100%);
+    position: relative;
+  }
+
+  .search-icon {
+    position: absolute;
+    top: 50%;
+    left: 14px;
+    transform: translateY(-50%);
+    color: var(--muted);
+  }
+
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px 12px 38px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    outline: none;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+  }
+
+  input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .icon-button,
+  .avatar {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .icon-button:hover {
+    background: var(--surface-hover);
+  }
+
+  .notification {
+    position: relative;
+  }
+
+  .notification-dot {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ef4444;
+  }
+
+  .avatar {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: white;
+    font-weight: 800;
+  }
+
+  @media (max-width: 700px) {
+    .topbar {
+      padding: 12px 18px;
+    }
+
+    .search-wrap {
+      display: none;
+    }
+  }
 </style>

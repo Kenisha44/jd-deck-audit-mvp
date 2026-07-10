@@ -73,6 +73,7 @@ export function buildPriorityQueue(slides = [], overallScores = {}) {
         queue.push({
           severity: "Moderate",
           category: "Slide Review",
+          slideNumber: weakest.number,
           title: `Prioritize Slide ${weakest.number}`,
           description:
             weakest.summary ||

@@ -25,83 +25,52 @@
 </div>
 
 <style>
+  .metric-card {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: var(--shadow-soft);
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
 
-.metric-card{
+  .metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+  }
 
-background:white;
+  .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+  }
 
-border:1px solid #e5e7eb;
+  .top span {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 650;
+  }
 
-border-radius:12px;
+  .indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
 
-padding:22px;
+  h2 {
+    margin: 0;
+    color: var(--text);
+    font-size: 34px;
+    font-weight: 800;
+  }
 
-box-shadow:0 2px 10px rgba(15,23,42,.04);
-
-transition:.2s;
-
-}
-
-.metric-card:hover{
-
-transform:translateY(-2px);
-
-box-shadow:0 8px 20px rgba(15,23,42,.08);
-
-}
-
-.top{
-
-display:flex;
-
-justify-content:space-between;
-
-align-items:center;
-
-margin-bottom:18px;
-
-}
-
-.top span{
-
-font-size:14px;
-
-color:#64748b;
-
-font-weight:600;
-
-}
-
-.indicator{
-
-width:12px;
-
-height:12px;
-
-border-radius:50%;
-
-}
-
-h2{
-
-margin:0;
-
-font-size:34px;
-
-font-weight:700;
-
-color:#0f172a;
-
-}
-
-p{
-
-margin-top:8px;
-
-font-size:13px;
-
-color:#94a3b8;
-
-}
-
+  p {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 13px;
+  }
 </style>
