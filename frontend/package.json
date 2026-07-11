@@ -9,9 +9,9 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.2",
     "@sveltejs/vite-plugin-svelte": "^3.0.2",
-    "vite": "^5.1.4",
-    "svelte": "^4.2.12"
-  },
-  "devDependencies": {}
+    "svelte": "^4.2.12",
+    "vite": "^5.1.4"
+  }
 }

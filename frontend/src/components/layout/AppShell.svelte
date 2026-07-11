@@ -8,41 +8,65 @@
   export let toggleDarkMode = () => {};
 </script>
 
-<div class="layout">
+<div class="app-layout">
   <Sidebar
     {activePage}
     {setActivePage}
   />
 
-  <div class="content">
+  <div class="app-content">
     <Topbar
       {darkMode}
       {toggleDarkMode}
+      {setActivePage}
     />
 
-    <main>
+    <main class="page-content">
       <slot />
     </main>
   </div>
 </div>
 
 <style>
+  .app-layout {
+    display: grid;
+    grid-template-columns:
+      var(--sidebar-width, 240px)
+      minmax(0, 1fr);
 
-.layout{
-    display:grid;
-    grid-template-columns:260px 1fr;
-    min-height:100vh;
-    background:var(--background);
-}
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--text);
+  }
 
-.content{
-    display:flex;
-    flex-direction:column;
-}
+  .app-content {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--background);
+  }
 
-main{
-    flex:1;
-    padding:32px;
-}
+  .page-content {
+    flex: 1;
+    min-width: 0;
+    padding: 32px;
+    background: var(--background);
+    color: var(--text);
+  }
 
+  @media (max-width: 980px) {
+    .app-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .page-content {
+      padding: 22px;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .page-content {
+      padding: 16px;
+    }
+  }
 </style>

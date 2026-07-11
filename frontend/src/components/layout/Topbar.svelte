@@ -1,6 +1,7 @@
 <script>
   export let darkMode = false;
   export let toggleDarkMode = () => {};
+  export let setActivePage = () => {};
 
   let search = '';
 </script>
@@ -16,45 +17,55 @@
     />
   </div>
 
-  <div class="actions">
-    <button
-      class="icon-button"
-      title={darkMode ? 'Use light mode' : 'Use dark mode'}
-      aria-label={darkMode ? 'Use light mode' : 'Use dark mode'}
-      on:click={toggleDarkMode}
-    >
-      {darkMode ? '☀️' : '🌙'}
-    </button>
+<div class="actions">
+  <button
+    class="icon-button"
+    title={darkMode ? 'Use light mode' : 'Use dark mode'}
+    aria-label={darkMode ? 'Use light mode' : 'Use dark mode'}
+    on:click={toggleDarkMode}
+  >
+    {darkMode ? '☀️' : '🌙'}
+  </button>
 
-    <button
-      class="icon-button notification"
-      title="Notifications"
-      aria-label="Notifications"
-    >
-      🔔
-      <span class="notification-dot"></span>
-    </button>
+  <button
+    class="icon-button notification"
+    title="Notifications"
+    aria-label="Notifications"
+  >
+    🔔
+    <span class="notification-dot"></span>
+  </button>
 
-    <button class="avatar" aria-label="Open profile menu">
-      JD
-    </button>
-  </div>
+  <button
+    class="avatar"
+    aria-label="Open profile"
+    on:click={() => setActivePage('profile')}
+  >
+    JD
+  </button>
+</div>
 </header>
 
 <style>
-  .topbar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    min-height: 76px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 24px;
-    padding: 14px 32px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-  }
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+
+  min-height: 76px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+
+  padding: 14px 32px;
+
+  background: var(--panel);
+  color: var(--text);
+
+  border-bottom: 1px solid var(--border);
+}
 
   .search-wrap {
     width: min(440px, 100%);
@@ -86,49 +97,70 @@
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
   }
 
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+}
 
-  .icon-button,
-  .avatar {
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-  }
+.icon-button,
+.avatar {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
 
-  .icon-button:hover {
-    background: var(--surface-hover);
-  }
+  display: inline-grid;
+  place-items: center;
 
-  .notification {
-    position: relative;
-  }
+  margin: 0;
+  padding: 0;
 
-  .notification-dot {
-    position: absolute;
-    top: 7px;
-    right: 7px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #ef4444;
-  }
+  border: 1px solid var(--border);
+  border-radius: 9px;
 
-  .avatar {
-    border-color: #2563eb;
-    background: #2563eb;
-    color: white;
-    font-weight: 800;
-  }
+  background: var(--surface);
+  color: var(--text);
+
+  line-height: 1;
+  vertical-align: middle;
+
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--surface-hover);
+}
+
+ .notification {
+  position: relative;
+}
+
+.notification-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+ .avatar {
+  position: static;
+  transform: none;
+
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #ffffff;
+
+  font-size: 14px;
+  font-weight: 850;
+}
+
 
   @media (max-width: 700px) {
     .topbar {
