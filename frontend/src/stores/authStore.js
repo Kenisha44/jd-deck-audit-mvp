@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { supabase } from '../lib/supabase.js';
+import { ensureProfile } from '../lib/database/profileService.js';
 
 export const user = writable(null);
 export const session = writable(null);
@@ -27,6 +28,10 @@ export async function initializeAuth() {
   session.set(currentSession);
   user.set(currentSession?.user ?? null);
   authLoading.set(false);
+ 
+  if (currentSession?.user) {
+    await ensureProfile(currentSession.user);
+  }
 
   supabase.auth.onAuthStateChange(
     (_event, nextSession) => {
@@ -35,7 +40,12 @@ export async function initializeAuth() {
       authLoading.set(false);
     }
   );
+if (nextSession?.user) {
+  ensureProfile(nextSession.user);
+};
+
 }
+
 
 export async function signUp({
   name,
@@ -134,4 +144,59 @@ export async function signOut() {
 
 export function clearAuthError() {
   authError.set('');
+}
+
+export async function sendPasswordReset(email) {
+  authLoading.set(true);
+  authError.set('');
+
+  const { error } =
+    await supabase.auth.resetPasswordForEmail(
+      email,
+      {
+        redirectTo:
+  `${window.location.origin}/?view=reset-password`
+      }
+    );
+
+  authLoading.set(false);
+
+  if (error) {
+    authError.set(error.message);
+
+    return {
+      success: false,
+      error
+    };
+  }
+
+  return {
+    success: true
+  };
+}
+
+export async function updatePassword(password) {
+  authLoading.set(true);
+  authError.set('');
+
+  const { data, error } =
+    await supabase.auth.updateUser({
+      password
+    });
+
+  authLoading.set(false);
+
+  if (error) {
+    authError.set(error.message);
+
+    return {
+      success: false,
+      error
+    };
+  }
+
+  return {
+    success: true,
+    data
+  };
 }

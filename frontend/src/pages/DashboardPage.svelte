@@ -10,6 +10,13 @@
   import ExecutiveHealthReport from '../components/dashboard/ExecutiveHealthReport.svelte';
   import SelectedSlideAnalysis from '../components/dashboard/SelectedSlideAnalysis.svelte';
 
+  import { user } from '../stores/authStore.js';
+
+  import {
+    saveAudit as saveCloudAudit,
+    loadAudits
+  } from '../lib/database/auditService.js';
+
   let selectedFile = null;
   let loading = false;
   let error = '';
@@ -21,41 +28,54 @@
   let slideTitle = 'Executive Update Slide';
   let slideText = '';
 
-  let projects = [];
+  let cloudAudits = [];
+  let loadingCloudAudits = false;
+  let savingAudit = false;
+  let saveMessage = '';
 
   const MAX_FILE_SIZE_MB = 15;
-  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+  const MAX_FILE_SIZE_BYTES =
+    MAX_FILE_SIZE_MB * 1024 * 1024;
 
   $: selectedSlide =
     audit?.slides?.[activeSlideIndex] ||
     audit?.slides?.[0] ||
     null;
 
-  $: deckMetadata = buildDeckMetadata(audit, selectedFile, error);
+  $: deckMetadata = buildDeckMetadata(
+    audit,
+    selectedFile,
+    error
+  );
 
-  onMount(() => {
-    try {
-      projects = JSON.parse(
-        localStorage.getItem('jd-projects') || '[]'
-      );
-    } catch {
-      projects = [];
-    }
+  onMount(async () => {
+    await refreshCloudAudits();
   });
 
-  function saveProject(data) {
-    const project = {
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      ...data
-    };
+  async function refreshCloudAudits() {
+    if (!$user?.id) {
+      cloudAudits = [];
+      return;
+    }
 
-    projects = [project, ...projects].slice(0, 8);
+    loadingCloudAudits = true;
 
-    localStorage.setItem(
-      'jd-projects',
-      JSON.stringify(projects)
-    );
+    const result = await loadAudits($user.id);
+
+    if (result.success) {
+      cloudAudits = result.data;
+    } else {
+      console.error(
+        'Unable to load cloud audits:',
+        result.error
+      );
+
+      error =
+        result.error?.message ||
+        'Unable to load your saved audits.';
+    }
+
+    loadingCloudAudits = false;
   }
 
   async function parseJsonResponse(
@@ -66,7 +86,9 @@
     let data = {};
 
     try {
-      data = text ? JSON.parse(text) : {};
+      data = text
+        ? JSON.parse(text)
+        : {};
     } catch {
       throw new Error(
         'The backend returned an unexpected response. Confirm that localhost:5050 is running.'
@@ -75,7 +97,8 @@
 
     if (!response.ok) {
       throw new Error(
-        data.error || fallbackMessage
+        data.error ||
+        fallbackMessage
       );
     }
 
@@ -87,7 +110,8 @@
       return 'Please choose a PPTX or PDF file first.';
     }
 
-    const fileName = file.name.toLowerCase();
+    const fileName =
+      file.name.toLowerCase();
 
     if (
       !fileName.endsWith('.pptx') &&
@@ -96,7 +120,10 @@
       return 'Only PPTX and PDF files are supported.';
     }
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
+    if (
+      file.size >
+      MAX_FILE_SIZE_BYTES
+    ) {
       return `This audit supports files up to ${MAX_FILE_SIZE_MB}MB.`;
     }
 
@@ -109,7 +136,9 @@
     }
 
     if (bytes < 1024 * 1024) {
-      return `${Math.round(bytes / 1024)} KB`;
+      return `${Math.round(
+        bytes / 1024
+      )} KB`;
     }
 
     return `${(
@@ -118,66 +147,79 @@
     ).toFixed(1)} MB`;
   }
 
-  function buildDeckMetadata(currentAudit, currentFile, currentError) {
-  if (currentAudit) {
-    return {
-      name:
-        currentAudit.deckName ||
-        currentAudit.title ||
-        'Untitled presentation',
+  function buildDeckMetadata(
+    currentAudit,
+    currentFile,
+    currentError
+  ) {
+    if (currentAudit) {
+      return {
+        name:
+          currentAudit.deckName ||
+          currentAudit.title ||
+          'Untitled presentation',
 
-      type:
-        currentAudit.fileType ||
-        currentAudit.source ||
-        'Deck',
+        type:
+          currentAudit.fileType ||
+          currentAudit.source ||
+          'Deck',
 
-      size:
-        currentAudit.metrics?.fileSize ||
-        'Not available',
+        size:
+          currentAudit.metrics?.fileSize ||
+          'Not available',
 
-      slides:
-        currentAudit.metrics?.estimatedSlides ||
-        currentAudit.slides?.length ||
-        'Not available',
+        slides:
+          currentAudit.metrics
+            ?.estimatedSlides ||
+          currentAudit.slides?.length ||
+          'Not available',
 
-      words:
-        currentAudit.metrics?.estimatedWords ??
-        'Not available',
+        words:
+          currentAudit.metrics
+            ?.estimatedWords ??
+          'Not available',
 
-      auditTime:
-        currentAudit.metrics?.estimatedAuditTime ||
-        'Under 10 seconds',
+        auditTime:
+          currentAudit.metrics
+            ?.estimatedAuditTime ||
+          'Under 10 seconds',
 
-      status: 'Audit complete'
-    };
+        status: 'Audit complete'
+      };
+    }
+
+    if (currentFile) {
+      return {
+        name: currentFile.name,
+
+        type:
+          currentFile.name
+            .split('.')
+            .pop()
+            ?.toUpperCase() ||
+          'Deck',
+
+        size: formatFileSize(
+          currentFile.size
+        ),
+
+        slides:
+          'Verified after upload',
+
+        words:
+          'Calculated during audit',
+
+        auditTime:
+          '5–10 seconds',
+
+        status: currentError
+          ? 'Needs attention'
+          : 'Ready to audit'
+      };
+    }
+
+    return null;
   }
-
-  if (currentFile) {
-    return {
-      name: currentFile.name,
-
-      type:
-        currentFile.name
-          .split('.')
-          .pop()
-          ?.toUpperCase() || 'Deck',
-
-      size: formatFileSize(currentFile.size),
-
-      slides: 'Verified after upload',
-
-      words: 'Calculated during audit',
-
-      auditTime: '5–10 seconds',
-
-      status: currentError
-        ? 'Needs attention'
-        : 'Ready to audit'
-    };
-  }
-
-  return null;
-}
 
   function handleFileChange(event) {
     selectedFile =
@@ -185,26 +227,32 @@
       null;
 
     audit = null;
+    saveMessage = '';
     activeSlideIndex = 0;
-    error = validateFile(selectedFile);
+
+    error = validateFile(
+      selectedFile
+    );
   }
 
   async function runDemoAudit() {
     loading = true;
     error = '';
+    saveMessage = '';
 
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/audit/demo`
       );
 
-      audit = await parseJsonResponse(
-        response,
-        'Demo audit failed.'
-      );
+      audit =
+        await parseJsonResponse(
+          response,
+          'Demo audit failed.'
+        );
 
+      selectedFile = null;
       activeSlideIndex = 0;
-      saveProject(audit);
     } catch (err) {
       error =
         err.message ||
@@ -223,7 +271,9 @@
       return;
     }
 
-    const formData = new FormData();
+    const formData =
+      new FormData();
+
     formData.append(
       'deck',
       selectedFile
@@ -231,6 +281,7 @@
 
     loading = true;
     error = '';
+    saveMessage = '';
 
     try {
       const response = await fetch(
@@ -241,13 +292,13 @@
         }
       );
 
-      audit = await parseJsonResponse(
-        response,
-        'Deck audit failed.'
-      );
+      audit =
+        await parseJsonResponse(
+          response,
+          'Deck audit failed.'
+        );
 
       activeSlideIndex = 0;
-      saveProject(audit);
     } catch (err) {
       error =
         err.message ||
@@ -266,6 +317,7 @@
 
     loading = true;
     error = '';
+    saveMessage = '';
 
     try {
       const response = await fetch(
@@ -283,13 +335,14 @@
         }
       );
 
-      audit = await parseJsonResponse(
-        response,
-        'Text audit failed.'
-      );
+      audit =
+        await parseJsonResponse(
+          response,
+          'Text audit failed.'
+        );
 
+      selectedFile = null;
       activeSlideIndex = 0;
-      saveProject(audit);
     } catch (err) {
       error =
         err.message ||
@@ -299,10 +352,86 @@
     }
   }
 
-  function loadProject(project) {
-    audit = project;
+  async function saveCurrentAudit() {
+    if (!audit) {
+      error =
+        'Run an audit before saving it.';
+      return;
+    }
+
+    if (!$user?.id) {
+      error =
+        'You must be signed in to save an audit.';
+      return;
+    }
+
+    savingAudit = true;
+    saveMessage = '';
+    error = '';
+
+    const title =
+      selectedFile?.name ||
+      audit.deckName ||
+      audit.title ||
+      slideTitle ||
+      'Untitled Audit';
+
+    const result =
+      await saveCloudAudit({
+        userId: $user.id,
+
+        title,
+
+        presentationName:
+          selectedFile?.name ||
+          audit.deckName ||
+          audit.title ||
+          'Untitled Presentation',
+
+        audit
+      });
+
+    if (!result.success) {
+      error =
+        result.error?.message ||
+        'The audit could not be saved.';
+
+      savingAudit = false;
+      return;
+    }
+
+    cloudAudits = [
+      result.data,
+      ...cloudAudits
+    ];
+
+    saveMessage =
+      'Audit saved to your JD workspace.';
+
+    savingAudit = false;
+  }
+
+  function loadCloudAudit(
+    savedAudit
+  ) {
+    if (!savedAudit?.audit) {
+      error =
+        'This saved audit does not contain report data.';
+      return;
+    }
+
+    audit = savedAudit.audit;
+    selectedFile = null;
     activeSlideIndex = 0;
     error = '';
+
+    saveMessage =
+      `Opened "${savedAudit.title}".`;
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
   }
 
   function setActiveSlide(index) {
@@ -331,16 +460,34 @@
       </p>
     </div>
 
-    <button
-      class="primary-button"
-      on:click={runDemoAudit}
-      disabled={loading}
-    >
-      {loading
-        ? 'Running Audit...'
-        : 'Run Demo Audit'}
-    </button>
+    <div class="dashboard-actions">
+      <button
+        class="secondary-link"
+        on:click={saveCurrentAudit}
+        disabled={!audit || savingAudit}
+      >
+        {savingAudit
+          ? 'Saving...'
+          : 'Save Audit'}
+      </button>
+
+      <button
+        class="primary-button"
+        on:click={runDemoAudit}
+        disabled={loading}
+      >
+        {loading
+          ? 'Running Audit...'
+          : 'Run Demo Audit'}
+      </button>
+    </div>
   </header>
+
+  {#if saveMessage}
+    <p class="save-message">
+      {saveMessage}
+    </p>
+  {/if}
 
   <div class="metrics">
     <MetricCard
@@ -359,14 +506,16 @@
 
     <MetricCard
       title="Business Impact"
-      value={audit?.healthReport?.businessImpact ?? '--'}
+      value={audit?.healthReport
+        ?.businessImpact ?? '--'}
       subtitle="Estimated impact"
       color="#f59e0b"
     />
 
     <MetricCard
       title="Priority Fixes"
-      value={audit?.priorityQueue?.length ?? 0}
+      value={audit?.priorityQueue
+        ?.length ?? 0}
       subtitle="Recommended changes"
       color="#dc2626"
     />
@@ -376,7 +525,9 @@
     <section class="upload-section panel sharp-panel">
       <div class="mode-tabs">
         <button
-          class:active={activeMode === 'upload'}
+          class:active={
+            activeMode === 'upload'
+          }
           on:click={() =>
             (activeMode = 'upload')}
         >
@@ -384,7 +535,9 @@
         </button>
 
         <button
-          class:active={activeMode === 'paste'}
+          class:active={
+            activeMode === 'paste'
+          }
           on:click={() =>
             (activeMode = 'paste')}
         >
@@ -404,8 +557,9 @@
 
           <p>
             Upload a presentation to receive
-            slide-level feedback, category scores,
-            and an executive health report.
+            slide-level feedback, category
+            scores, and an executive health
+            report.
           </p>
         </div>
 
@@ -497,35 +651,62 @@
       />
 
       <aside class="panel sharp-panel project-panel">
-        <p class="eyebrow accent">
-          Saved Projects
-        </p>
+        <div class="project-header">
+          <div>
+            <p class="eyebrow accent">
+              Saved Projects
+            </p>
 
-        <h2>
-          Recent Reports
-        </h2>
+            <h2>
+              Recent Reports
+            </h2>
+          </div>
 
-        {#if projects.length === 0}
+          <button
+            class="refresh-button"
+            on:click={refreshCloudAudits}
+            disabled={loadingCloudAudits}
+          >
+            {loadingCloudAudits
+              ? 'Loading...'
+              : 'Refresh'}
+          </button>
+        </div>
+
+        {#if loadingCloudAudits}
           <p class="muted">
-            Completed audits will be saved
-            locally and displayed here.
+            Loading your saved audits...
           </p>
+
+        {:else if cloudAudits.length === 0}
+          <p class="muted">
+            Save an audit and it will appear
+            here across all of your devices.
+          </p>
+
         {:else}
           <div class="project-list">
-            {#each projects as project}
+            {#each cloudAudits as savedAudit}
               <button
                 on:click={() =>
-                  loadProject(project)}
+                  loadCloudAudit(savedAudit)}
               >
                 <strong>
-                  {project.deckName}
+                  {savedAudit.title}
                 </strong>
 
                 <span>
-                  {project.overall}/100 ·
-                  {project.readiness ||
-                    project.grade}
+                  {savedAudit.overall_score ??
+                    '--'}/100 ·
+                  {savedAudit.grade ||
+                    'Not graded'}
                 </span>
+
+                <small>
+                  {new Date(
+                    savedAudit.created_at
+                  ).toLocaleDateString()}
+                </small>
               </button>
             {/each}
           </div>
@@ -542,25 +723,33 @@
         />
 
         <PriorityQueue
-          priorityQueue={audit.priorityQueue}
+          priorityQueue={
+            audit.priorityQueue
+          }
         />
       </div>
 
       <div class="dashboard-column">
-  <SlideNavigator
-    slides={audit.slides}
-    selectedSlide={selectedSlide}
-    activeSlideIndex={activeSlideIndex}
-    setActiveSlide={setActiveSlide}
-  />
+        <SlideNavigator
+          slides={audit.slides}
+          selectedSlide={selectedSlide}
+          activeSlideIndex={
+            activeSlideIndex
+          }
+          setActiveSlide={
+            setActiveSlide
+          }
+        />
 
-  <SelectedSlideAnalysis slide={selectedSlide} />
+        <SelectedSlideAnalysis
+          slide={selectedSlide}
+        />
 
-  <ExecutiveHealthReport
-    audit={audit}
-    exportReport={exportReport}
-  />
-</div>
+        <ExecutiveHealthReport
+          audit={audit}
+          exportReport={exportReport}
+        />
+      </div>
     </div>
   {:else}
     <section class="empty-dashboard panel sharp-panel">
@@ -573,10 +762,11 @@
       </h2>
 
       <p>
-        Run the demo, upload a presentation, or
-        paste slide copy to generate Presentation
-        DNA, priority fixes, slide-level findings,
-        and an Executive Health Report.
+        Run the demo, upload a presentation,
+        or paste slide copy to generate
+        Presentation DNA, priority fixes,
+        slide-level findings, and an
+        Executive Health Report.
       </p>
 
       <button
@@ -592,10 +782,10 @@
 
 <style>
   .dashboard-page {
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: 28px;
-    width: 100%;
   }
 
   .dashboard-header {
@@ -607,7 +797,8 @@
 
   .dashboard-header h1 {
     margin: 0;
-    font-size: clamp(32px, 4vw, 46px);
+    font-size:
+      clamp(32px, 4vw, 46px);
     letter-spacing: -0.04em;
   }
 
@@ -615,6 +806,24 @@
     margin-top: 8px;
     color: var(--muted);
     line-height: 1.6;
+  }
+
+  .dashboard-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .save-message {
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid
+      var(--success-border);
+    background:
+      var(--success-soft);
+    color: var(--success);
+    font-weight: 750;
   }
 
   .metrics {
@@ -639,9 +848,9 @@
   }
 
   .upload-section {
-    padding: 30px;
     display: grid;
     gap: 24px;
+    padding: 30px;
   }
 
   .section-copy {
@@ -679,15 +888,16 @@
   }
 
   .upload-box label {
-    display: grid;
-    gap: 8px;
     min-height: 180px;
+    display: grid;
     place-content: center;
-    text-align: center;
+    gap: 8px;
     padding: 28px;
-    border: 2px dashed var(--teal);
+    border: 2px dashed
+      var(--teal);
     background:
       rgba(3, 138, 142, 0.06);
+    text-align: center;
     cursor: pointer;
   }
 
@@ -704,7 +914,8 @@
   .paste-box textarea {
     width: 100%;
     padding: 14px;
-    border: 1px solid var(--border);
+    border: 1px solid
+      var(--border);
     background: var(--panel);
     color: var(--text);
     font: inherit;
@@ -712,6 +923,28 @@
 
   .project-panel {
     padding: 28px;
+  }
+
+  .project-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .refresh-button {
+    padding: 9px 12px;
+    border: 1px solid
+      var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .refresh-button:hover {
+    background:
+      var(--surface-hover);
   }
 
   .project-list {
@@ -723,15 +956,24 @@
   .project-list button {
     display: grid;
     gap: 5px;
-    text-align: left;
     padding: 14px;
-    border: 1px solid var(--border);
+    border: 1px solid
+      var(--border);
     background:
-      rgba(3, 138, 142, 0.05);
+      var(--surface);
+    color: var(--text);
+    text-align: left;
     cursor: pointer;
   }
 
-  .project-list span {
+  .project-list button:hover {
+    border-color: var(--teal);
+    background:
+      var(--surface-hover);
+  }
+
+  .project-list span,
+  .project-list small {
     color: var(--muted);
     font-size: 13px;
   }
@@ -750,12 +992,12 @@
   }
 
   .empty-dashboard {
-    padding: 36px;
     min-height: 260px;
     display: grid;
     place-content: center;
     justify-items: start;
     gap: 14px;
+    padding: 36px;
   }
 
   .empty-dashboard p {
@@ -782,6 +1024,14 @@
       align-items: stretch;
     }
 
+    .dashboard-actions {
+      align-items: stretch;
+    }
+
+    .dashboard-actions button {
+      flex: 1;
+    }
+
     .metrics {
       grid-template-columns: 1fr;
     }
@@ -790,6 +1040,10 @@
     .project-panel,
     .empty-dashboard {
       padding: 22px;
+    }
+
+    .project-header {
+      flex-direction: column;
     }
   }
 </style>

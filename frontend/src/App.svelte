@@ -9,6 +9,9 @@
   import SignupPage from './pages/SignupPage.svelte';
   import SettingsPage from './pages/SettingsPage.svelte';
 
+  import ForgotPasswordPage from './pages/ForgotPasswordPage.svelte';
+  import ResetPasswordPage from './pages/ResetPasswordPage.svelte';
+  
   import {
     user,
     authLoading,
@@ -19,19 +22,34 @@
   let activePage = 'login';
   let darkMode = false;
 
-  onMount(async () => {
-    darkMode =
-      localStorage.getItem('jd-theme') === 'dark';
+ onMount(async () => {
+  darkMode =
+    localStorage.getItem('jd-theme') === 'dark';
 
-    applyTheme();
+  applyTheme();
 
-    await initializeAuth();
+  const requestedView =
+    new URLSearchParams(
+      window.location.search
+    ).get('view');
 
+  await initializeAuth();
+
+  if (requestedView === 'reset-password') {
+    activePage = 'reset-password';
+  } else {
     activePage = $user
       ? 'dashboard'
       : 'login';
-  });
-
+  }
+});
+if (window.location.hash.includes('reset-password')) {
+  activePage = 'reset-password';
+} else {
+  activePage = $user
+    ? 'dashboard'
+    : 'login';
+}
   function applyTheme() {
     document.documentElement.dataset.theme =
       darkMode ? 'dark' : 'light';
@@ -105,6 +123,33 @@
     </div>
   </section>
 
+{:else if activePage === 'reset-password'}
+  <main class="public-app">
+    <header class="public-topbar">
+      <button
+        class="brand-button"
+        on:click={() => setActivePage('login')}
+      >
+        <span class="brand-mark">JD</span>
+
+        <span>
+          <strong>Johken Design</strong>
+          <small>Deck Audit</small>
+        </span>
+      </button>
+
+      <button
+        class="theme-button"
+        on:click={toggleDarkMode}
+      >
+        {darkMode ? '☀️' : '🌙'}
+      </button>
+    </header>
+
+    <ResetPasswordPage {setActivePage} />
+  </main>
+
+
 {:else if !$user}
   <main class="public-app">
     <header class="public-topbar">
@@ -134,15 +179,18 @@
       </button>
     </header>
 
-    {#if activePage === 'signup'}
-      <SignupPage
-        {setActivePage}
-      />
-    {:else}
-      <LoginPage
-        {setActivePage}
-      />
-    {/if}
+   {#if activePage === 'signup'}
+  <SignupPage {setActivePage} />
+
+{:else if activePage === 'forgot-password'}
+  <ForgotPasswordPage {setActivePage} />
+
+{:else if activePage === 'reset-password'}
+  <ResetPasswordPage {setActivePage} />
+
+{:else}
+  <LoginPage {setActivePage} />
+{/if}
   </main>
 
 {:else}
