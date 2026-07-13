@@ -1,7 +1,8 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { API_BASE_URL } from '../lib/config.js';
 
+  import AuditProgress from '../components/common/AuditProgress.svelte';
   import AuditWorkspace from '../components/workspace/AuditWorkspace.svelte';
   import DashboardMetrics from '../components/dashboard/DashboardMetrics.svelte';
   import SavedAuditsPanel from '../components/dashboard/SavedAuditsPanel.svelte';
@@ -37,7 +38,12 @@
   let savingAudit = false;
   let saveMessage = '';
 
+  let auditStage = 'Preparing';
+  let auditProgress = 0;
+  let progressTimers = [];
+
   const MAX_FILE_SIZE_MB = 15;
+
   const MAX_FILE_SIZE_BYTES =
     MAX_FILE_SIZE_MB * 1024 * 1024;
 
@@ -56,6 +62,95 @@
     await refreshCloudAudits();
   });
 
+  onDestroy(() => {
+    clearProgressTimers();
+  });
+
+  function clearProgressTimers() {
+    progressTimers.forEach(timer => {
+      clearTimeout(timer);
+    });
+
+    progressTimers = [];
+  }
+
+  function scheduleProgressStage(
+    delay,
+    stage,
+    progress
+  ) {
+    const timer = setTimeout(() => {
+      if (!loading) {
+        return;
+      }
+
+      auditStage = stage;
+      auditProgress = progress;
+    }, delay);
+
+    progressTimers.push(timer);
+  }
+
+  function startAuditProgress(mode = 'upload') {
+    clearProgressTimers();
+
+    auditProgress = 8;
+
+    auditStage =
+      mode === 'upload'
+        ? 'Uploading Presentation'
+        : 'Analyzing Content';
+
+    if (mode === 'upload') {
+      scheduleProgressStage(
+        450,
+        'Extracting Slides',
+        30
+      );
+
+      scheduleProgressStage(
+        1050,
+        'Analyzing Content',
+        55
+      );
+    } else {
+      scheduleProgressStage(
+        450,
+        'Analyzing Content',
+        48
+      );
+    }
+
+    scheduleProgressStage(
+      1650,
+      'Generating Presentation DNA',
+      76
+    );
+
+    scheduleProgressStage(
+      2350,
+      'Building Executive Report',
+      92
+    );
+  }
+
+  async function completeAuditProgress() {
+    clearProgressTimers();
+
+    auditStage = 'Complete';
+    auditProgress = 100;
+
+    await new Promise(resolve => {
+      setTimeout(resolve, 350);
+    });
+  }
+
+  function resetAuditProgress() {
+    clearProgressTimers();
+    auditStage = 'Preparing';
+    auditProgress = 0;
+  }
+
   async function refreshCloudAudits() {
     if (!$user?.id) {
       cloudAudits = [];
@@ -65,7 +160,9 @@
     loadingCloudAudits = true;
     error = '';
 
-    const result = await loadAudits($user.id);
+    const result = await loadAudits(
+      $user.id
+    );
 
     if (result.success) {
       cloudAudits = result.data;
@@ -88,6 +185,7 @@
     fallbackMessage
   ) {
     const text = await response.text();
+
     let data = {};
 
     try {
@@ -140,7 +238,10 @@
       return 'Not available';
     }
 
-    if (bytes < 1024 * 1024) {
+    if (
+      bytes <
+      1024 * 1024
+    ) {
       return `${Math.round(
         bytes / 1024
       )} KB`;
@@ -186,13 +287,15 @@
           currentAudit.metrics?.estimatedAuditTime ||
           'Under 10 seconds',
 
-        status: 'Audit complete'
+        status:
+          'Audit complete'
       };
     }
 
     if (currentFile) {
       return {
-        name: currentFile.name,
+        name:
+          currentFile.name,
 
         type:
           currentFile.name
@@ -234,6 +337,8 @@
     saveMessage = '';
     activeSlideIndex = 0;
 
+    resetAuditProgress();
+
     error = validateFile(
       selectedFile
     );
@@ -244,20 +349,33 @@
     error = '';
     saveMessage = '';
 
+    startAuditProgress('demo');
+
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/audit/demo`
       );
 
-      audit =
+      const result =
         await parseJsonResponse(
           response,
           'Demo audit failed.'
         );
 
+      auditStage =
+        'Generating Presentation DNA';
+
+      auditProgress = 82;
+
+      audit = result;
+
       selectedFile = null;
       activeSlideIndex = 0;
+
+      await completeAuditProgress();
     } catch (err) {
+      resetAuditProgress();
+
       error =
         err.message ||
         'The demo audit could not run.';
@@ -268,7 +386,9 @@
 
   async function submitDeck() {
     const validationError =
-      validateFile(selectedFile);
+      validateFile(
+        selectedFile
+      );
 
     if (validationError) {
       error = validationError;
@@ -287,6 +407,8 @@
     error = '';
     saveMessage = '';
 
+    startAuditProgress('upload');
+
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/audit`,
@@ -296,14 +418,33 @@
         }
       );
 
-      audit =
+      auditStage =
+        'Analyzing Content';
+
+      auditProgress =
+        Math.max(
+          auditProgress,
+          62
+        );
+
+      const result =
         await parseJsonResponse(
           response,
           'Deck audit failed.'
         );
 
+      auditStage =
+        'Generating Presentation DNA';
+
+      auditProgress = 84;
+
+      audit = result;
       activeSlideIndex = 0;
+
+      await completeAuditProgress();
     } catch (err) {
+      resetAuditProgress();
+
       error =
         err.message ||
         'The deck could not be audited.';
@@ -316,6 +457,7 @@
     if (!slideText.trim()) {
       error =
         'Paste slide copy before running the audit.';
+
       return;
     }
 
@@ -323,31 +465,49 @@
     error = '';
     saveMessage = '';
 
+    startAuditProgress('text');
+
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/audit/text`,
         {
           method: 'POST',
+
           headers: {
             'Content-Type':
               'application/json'
           },
+
           body: JSON.stringify({
-            title: slideTitle,
-            text: slideText
+            title:
+              slideTitle,
+
+            text:
+              slideText
           })
         }
       );
 
-      audit =
+      auditStage =
+        'Generating Presentation DNA';
+
+      auditProgress = 82;
+
+      const result =
         await parseJsonResponse(
           response,
           'Text audit failed.'
         );
 
+      audit = result;
+
       selectedFile = null;
       activeSlideIndex = 0;
+
+      await completeAuditProgress();
     } catch (err) {
+      resetAuditProgress();
+
       error =
         err.message ||
         'The pasted text could not be audited.';
@@ -360,12 +520,14 @@
     if (!audit) {
       error =
         'Run an audit before saving it.';
+
       return;
     }
 
     if (!$user?.id) {
       error =
         'You must be signed in to save an audit.';
+
       return;
     }
 
@@ -382,7 +544,8 @@
 
     const result =
       await saveCloudAudit({
-        userId: $user.id,
+        userId:
+          $user.id,
 
         title,
 
@@ -419,13 +582,18 @@
     if (!savedAudit?.audit) {
       error =
         'This saved audit does not contain report data.';
+
       return;
     }
 
-    audit = savedAudit.audit;
+    audit =
+      savedAudit.audit;
+
     selectedFile = null;
     activeSlideIndex = 0;
     error = '';
+
+    resetAuditProgress();
 
     saveMessage =
       `Opened "${savedAudit.title}".`;
@@ -436,7 +604,9 @@
     });
   }
 
-  async function handleRenameAudit(savedAudit) {
+  async function handleRenameAudit(
+    savedAudit
+  ) {
     const nextTitle =
       window.prompt(
         'Rename audit',
@@ -460,6 +630,7 @@
       error =
         result.error?.message ||
         'The audit could not be renamed.';
+
       return;
     }
 
@@ -474,7 +645,9 @@
       'Audit renamed successfully.';
   }
 
-  async function handleDeleteAudit(savedAudit) {
+  async function handleDeleteAudit(
+    savedAudit
+  ) {
     const confirmed =
       window.confirm(
         `Delete "${savedAudit.title}"? This cannot be undone.`
@@ -496,20 +669,24 @@
       error =
         result.error?.message ||
         'The audit could not be deleted.';
+
       return;
     }
 
     cloudAudits =
       cloudAudits.filter(
         item =>
-          item.id !== savedAudit.id
+          item.id !==
+          savedAudit.id
       );
 
     saveMessage =
       'Audit deleted successfully.';
   }
 
-  async function handleDuplicateAudit(savedAudit) {
+  async function handleDuplicateAudit(
+    savedAudit
+  ) {
     error = '';
     saveMessage = '';
 
@@ -522,6 +699,7 @@
       error =
         result.error?.message ||
         'The audit could not be duplicated.';
+
       return;
     }
 
@@ -564,7 +742,11 @@
       <button
         class="secondary-link"
         on:click={saveCurrentAudit}
-        disabled={!audit || savingAudit}
+        disabled={
+          !audit ||
+          savingAudit ||
+          loading
+        }
       >
         {savingAudit
           ? 'Saving...'
@@ -584,7 +766,10 @@
   </header>
 
   {#if saveMessage}
-    <p class="save-message">
+    <p
+      class="save-message"
+      role="status"
+    >
       {saveMessage}
     </p>
   {/if}
@@ -602,6 +787,7 @@
           }
           on:click={() =>
             (activeMode = 'upload')}
+          disabled={loading}
         >
           Upload Deck
         </button>
@@ -612,6 +798,7 @@
           }
           on:click={() =>
             (activeMode = 'paste')}
+          disabled={loading}
         >
           Paste Text
         </button>
@@ -641,9 +828,13 @@
             type="file"
             accept=".pptx,.pdf"
             on:change={handleFileChange}
+            disabled={loading}
           />
 
-          <label for="deck-file">
+          <label
+            for="deck-file"
+            class:disabled={loading}
+          >
             <strong>
               {selectedFile
                 ? selectedFile.name
@@ -659,7 +850,10 @@
           <button
             class="primary-button"
             on:click={submitDeck}
-            disabled={loading}
+            disabled={
+              loading ||
+              !selectedFile
+            }
           >
             {loading
               ? 'Auditing Presentation...'
@@ -687,18 +881,23 @@
           <input
             bind:value={slideTitle}
             placeholder="Slide title"
+            disabled={loading}
           />
 
           <textarea
             bind:value={slideText}
             rows="9"
             placeholder="Paste slide text, bullets, or speaker notes..."
+            disabled={loading}
           ></textarea>
 
           <button
             class="primary-button"
             on:click={submitText}
-            disabled={loading}
+            disabled={
+              loading ||
+              !slideText.trim()
+            }
           >
             {loading
               ? 'Auditing Text...'
@@ -708,9 +907,31 @@
       {/if}
 
       {#if error}
-        <p class="error-box">
-          {error}
-        </p>
+        <div
+          class="error-state"
+          role="alert"
+        >
+          <strong>
+            We could not complete the audit.
+          </strong>
+
+          <p>{error}</p>
+
+          <ul>
+            <li>
+              Confirm the backend is running.
+            </li>
+
+            <li>
+              Check that the presentation is
+              not corrupted or password protected.
+            </li>
+
+            <li>
+              Try a smaller PPTX file.
+            </li>
+          </ul>
+        </div>
       {/if}
     </section>
 
@@ -734,7 +955,48 @@
     </div>
   </div>
 
-  {#if audit}
+  {#if loading}
+    <AuditProgress
+      stage={auditStage}
+      progress={auditProgress}
+    />
+  {/if}
+
+  {#if audit && !loading}
+    <div class="completion-banner panel sharp-panel">
+      <div class="completion-icon">
+        ✓
+      </div>
+
+      <div>
+        <p class="eyebrow accent">
+          Audit Complete
+        </p>
+
+        <h2>
+          Executive analysis generated
+        </h2>
+
+        <p>
+          JD reviewed
+          {audit.slides?.length || 0}
+          slides and created Presentation DNA,
+          priority recommendations, and an
+          Executive Health Report.
+        </p>
+      </div>
+
+      <div class="completion-score">
+        <strong>
+          {audit.overall ?? '--'}
+        </strong>
+
+        <span>
+          Overall Score
+        </span>
+      </div>
+    </div>
+
     <div class="dashboard-grid">
       <div class="dashboard-column">
         <PresentationDNA
@@ -770,14 +1032,18 @@
         />
       </div>
     </div>
-  {:else}
+  {:else if !loading}
     <section class="empty-dashboard panel sharp-panel">
+      <div class="empty-icon">
+        JD
+      </div>
+
       <p class="eyebrow accent">
         Audit Results
       </p>
 
       <h2>
-        Your executive analysis will appear here
+        Your next executive presentation starts here
       </h2>
 
       <p>
@@ -871,7 +1137,8 @@
   }
 
   .section-copy h2,
-  .empty-dashboard h2 {
+  .empty-dashboard h2,
+  .completion-banner h2 {
     margin: 0;
     font-size: 27px;
     letter-spacing: -0.03em;
@@ -912,6 +1179,11 @@
     cursor: pointer;
   }
 
+  .upload-box label.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
   .upload-box label strong {
     font-size: 19px;
   }
@@ -932,6 +1204,78 @@
     font: inherit;
   }
 
+  .error-state {
+    display: grid;
+    gap: 10px;
+    padding: 18px;
+    border: 1px solid
+      var(--danger-border);
+    background:
+      var(--danger-soft);
+    color: var(--danger);
+  }
+
+  .error-state p {
+    margin: 0;
+  }
+
+  .error-state ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 20px;
+  }
+
+  .completion-banner {
+    display: grid;
+    grid-template-columns:
+      auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 20px;
+    padding: 26px;
+    background: var(--panel);
+    color: var(--text);
+  }
+
+  .completion-icon {
+    width: 52px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    background: var(--success);
+    color: white;
+    font-size: 25px;
+    font-weight: 900;
+  }
+
+  .completion-banner p:last-child {
+    margin-top: 8px;
+    color: var(--muted);
+  }
+
+  .completion-score {
+    min-width: 112px;
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    padding: 14px;
+    border: 1px solid
+      var(--border);
+    background: var(--surface);
+  }
+
+  .completion-score strong {
+    color: var(--orange);
+    font-size: 38px;
+    line-height: 1;
+  }
+
+  .completion-score span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 750;
+  }
+
   .dashboard-grid {
     display: grid;
     grid-template-columns:
@@ -946,12 +1290,22 @@
   }
 
   .empty-dashboard {
-    min-height: 260px;
+    min-height: 320px;
     display: grid;
     place-content: center;
     justify-items: start;
     gap: 14px;
     padding: 36px;
+  }
+
+  .empty-icon {
+    width: 54px;
+    height: 54px;
+    display: grid;
+    place-items: center;
+    background: var(--blue);
+    color: white;
+    font-weight: 900;
   }
 
   .empty-dashboard p {
@@ -979,6 +1333,15 @@
 
     .dashboard-actions button {
       flex: 1;
+    }
+
+    .completion-banner {
+      grid-template-columns: 1fr;
+      justify-items: start;
+    }
+
+    .completion-score {
+      width: 100%;
     }
 
     .upload-section,
