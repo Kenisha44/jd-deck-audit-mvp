@@ -100,3 +100,75 @@ export async function loadAudit(auditId) {
     data
   };
 }
+export async function renameAudit(auditId, title) {
+
+    const { data, error } =
+      await supabase
+        .from('audits')
+        .update({
+          title,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', auditId)
+        .select()
+        .single();
+  
+    if (error) {
+      return {
+        success: false,
+        error
+      };
+    }
+  
+    return {
+      success: true,
+      data
+    };
+  
+  }
+  export async function deleteAudit(auditId) {
+
+    const { error } =
+      await supabase
+        .from('audits')
+        .delete()
+        .eq('id', auditId);
+  
+    if (error) {
+  
+      return {
+        success: false,
+        error
+      };
+  
+    }
+  
+    return {
+      success: true
+    };
+  
+  }
+  export async function duplicateAudit(audit) {
+
+    const copy = {
+      ...audit,
+      id: undefined,
+      created_at: undefined,
+      updated_at: undefined,
+      title: `${audit.title} Copy`
+    };
+  
+    return saveAudit({
+  
+      userId: audit.user_id,
+  
+      title: copy.title,
+  
+      presentationName:
+        audit.presentation_name,
+  
+      audit: audit.audit
+  
+    });
+  
+  }

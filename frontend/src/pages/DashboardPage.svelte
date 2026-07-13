@@ -2,8 +2,9 @@
   import { onMount } from 'svelte';
   import { API_BASE_URL } from '../lib/config.js';
 
-  import MetricCard from '../components/common/MetricCard.svelte';
   import AuditWorkspace from '../components/workspace/AuditWorkspace.svelte';
+  import DashboardMetrics from '../components/dashboard/DashboardMetrics.svelte';
+  import SavedAuditsPanel from '../components/dashboard/SavedAuditsPanel.svelte';
   import PresentationDNA from '../components/dashboard/PresentationDNA.svelte';
   import SlideNavigator from '../components/dashboard/SlideNavigator.svelte';
   import PriorityQueue from '../components/dashboard/PriorityQueue.svelte';
@@ -14,7 +15,10 @@
 
   import {
     saveAudit as saveCloudAudit,
-    loadAudits
+    loadAudits,
+    renameAudit,
+    deleteAudit,
+    duplicateAudit
   } from '../lib/database/auditService.js';
 
   let selectedFile = null;
@@ -59,6 +63,7 @@
     }
 
     loadingCloudAudits = true;
+    error = '';
 
     const result = await loadAudits($user.id);
 
@@ -169,19 +174,16 @@
           'Not available',
 
         slides:
-          currentAudit.metrics
-            ?.estimatedSlides ||
+          currentAudit.metrics?.estimatedSlides ||
           currentAudit.slides?.length ||
           'Not available',
 
         words:
-          currentAudit.metrics
-            ?.estimatedWords ??
+          currentAudit.metrics?.estimatedWords ??
           'Not available',
 
         auditTime:
-          currentAudit.metrics
-            ?.estimatedAuditTime ||
+          currentAudit.metrics?.estimatedAuditTime ||
           'Under 10 seconds',
 
         status: 'Audit complete'
@@ -199,9 +201,10 @@
             ?.toUpperCase() ||
           'Deck',
 
-        size: formatFileSize(
-          currentFile.size
-        ),
+        size:
+          formatFileSize(
+            currentFile.size
+          ),
 
         slides:
           'Verified after upload',
@@ -212,9 +215,10 @@
         auditTime:
           '5–10 seconds',
 
-        status: currentError
-          ? 'Needs attention'
-          : 'Ready to audit'
+        status:
+          currentError
+            ? 'Needs attention'
+            : 'Ready to audit'
       };
     }
 
@@ -411,9 +415,7 @@
     savingAudit = false;
   }
 
-  function loadCloudAudit(
-    savedAudit
-  ) {
+  function loadCloudAudit(savedAudit) {
     if (!savedAudit?.audit) {
       error =
         'This saved audit does not contain report data.';
@@ -432,6 +434,104 @@
       top: 0,
       behavior: 'smooth'
     });
+  }
+
+  async function handleRenameAudit(savedAudit) {
+    const nextTitle =
+      window.prompt(
+        'Rename audit',
+        savedAudit.title
+      );
+
+    if (!nextTitle?.trim()) {
+      return;
+    }
+
+    error = '';
+    saveMessage = '';
+
+    const result =
+      await renameAudit(
+        savedAudit.id,
+        nextTitle.trim()
+      );
+
+    if (!result.success) {
+      error =
+        result.error?.message ||
+        'The audit could not be renamed.';
+      return;
+    }
+
+    cloudAudits =
+      cloudAudits.map(item =>
+        item.id === savedAudit.id
+          ? result.data
+          : item
+      );
+
+    saveMessage =
+      'Audit renamed successfully.';
+  }
+
+  async function handleDeleteAudit(savedAudit) {
+    const confirmed =
+      window.confirm(
+        `Delete "${savedAudit.title}"? This cannot be undone.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    error = '';
+    saveMessage = '';
+
+    const result =
+      await deleteAudit(
+        savedAudit.id
+      );
+
+    if (!result.success) {
+      error =
+        result.error?.message ||
+        'The audit could not be deleted.';
+      return;
+    }
+
+    cloudAudits =
+      cloudAudits.filter(
+        item =>
+          item.id !== savedAudit.id
+      );
+
+    saveMessage =
+      'Audit deleted successfully.';
+  }
+
+  async function handleDuplicateAudit(savedAudit) {
+    error = '';
+    saveMessage = '';
+
+    const result =
+      await duplicateAudit(
+        savedAudit
+      );
+
+    if (!result.success) {
+      error =
+        result.error?.message ||
+        'The audit could not be duplicated.';
+      return;
+    }
+
+    cloudAudits = [
+      result.data,
+      ...cloudAudits
+    ];
+
+    saveMessage =
+      'Audit duplicated successfully.';
   }
 
   function setActiveSlide(index) {
@@ -489,37 +589,9 @@
     </p>
   {/if}
 
-  <div class="metrics">
-    <MetricCard
-      title="Overall Score"
-      value={audit?.overall ?? '--'}
-      subtitle="Executive readiness"
-      color="#2563eb"
-    />
-
-    <MetricCard
-      title="Slides"
-      value={audit?.slides?.length ?? '--'}
-      subtitle="Slides reviewed"
-      color="#16a34a"
-    />
-
-    <MetricCard
-      title="Business Impact"
-      value={audit?.healthReport
-        ?.businessImpact ?? '--'}
-      subtitle="Estimated impact"
-      color="#f59e0b"
-    />
-
-    <MetricCard
-      title="Priority Fixes"
-      value={audit?.priorityQueue
-        ?.length ?? 0}
-      subtitle="Recommended changes"
-      color="#dc2626"
-    />
-  </div>
+  <DashboardMetrics
+    audits={cloudAudits}
+  />
 
   <div class="workspace-grid">
     <section class="upload-section panel sharp-panel">
@@ -650,68 +722,15 @@
         exportReport={exportReport}
       />
 
-      <aside class="panel sharp-panel project-panel">
-        <div class="project-header">
-          <div>
-            <p class="eyebrow accent">
-              Saved Projects
-            </p>
-
-            <h2>
-              Recent Reports
-            </h2>
-          </div>
-
-          <button
-            class="refresh-button"
-            on:click={refreshCloudAudits}
-            disabled={loadingCloudAudits}
-          >
-            {loadingCloudAudits
-              ? 'Loading...'
-              : 'Refresh'}
-          </button>
-        </div>
-
-        {#if loadingCloudAudits}
-          <p class="muted">
-            Loading your saved audits...
-          </p>
-
-        {:else if cloudAudits.length === 0}
-          <p class="muted">
-            Save an audit and it will appear
-            here across all of your devices.
-          </p>
-
-        {:else}
-          <div class="project-list">
-            {#each cloudAudits as savedAudit}
-              <button
-                on:click={() =>
-                  loadCloudAudit(savedAudit)}
-              >
-                <strong>
-                  {savedAudit.title}
-                </strong>
-
-                <span>
-                  {savedAudit.overall_score ??
-                    '--'}/100 ·
-                  {savedAudit.grade ||
-                    'Not graded'}
-                </span>
-
-                <small>
-                  {new Date(
-                    savedAudit.created_at
-                  ).toLocaleDateString()}
-                </small>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </aside>
+      <SavedAuditsPanel
+        audits={cloudAudits}
+        loading={loadingCloudAudits}
+        onRefresh={refreshCloudAudits}
+        onOpen={loadCloudAudit}
+        onRename={handleRenameAudit}
+        onDuplicate={handleDuplicateAudit}
+        onDelete={handleDeleteAudit}
+      />
     </div>
   </div>
 
@@ -826,13 +845,6 @@
     font-weight: 750;
   }
 
-  .metrics {
-    display: grid;
-    grid-template-columns:
-      repeat(4, minmax(0, 1fr));
-    gap: 20px;
-  }
-
   .workspace-grid {
     display: grid;
     grid-template-columns:
@@ -859,7 +871,6 @@
   }
 
   .section-copy h2,
-  .project-panel h2,
   .empty-dashboard h2 {
     margin: 0;
     font-size: 27px;
@@ -921,63 +932,6 @@
     font: inherit;
   }
 
-  .project-panel {
-    padding: 28px;
-  }
-
-  .project-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-  }
-
-  .refresh-button {
-    padding: 9px 12px;
-    border: 1px solid
-      var(--border);
-    background: var(--surface);
-    color: var(--text);
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .refresh-button:hover {
-    background:
-      var(--surface-hover);
-  }
-
-  .project-list {
-    display: grid;
-    gap: 10px;
-    margin-top: 18px;
-  }
-
-  .project-list button {
-    display: grid;
-    gap: 5px;
-    padding: 14px;
-    border: 1px solid
-      var(--border);
-    background:
-      var(--surface);
-    color: var(--text);
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .project-list button:hover {
-    border-color: var(--teal);
-    background:
-      var(--surface-hover);
-  }
-
-  .project-list span,
-  .project-list small {
-    color: var(--muted);
-    font-size: 13px;
-  }
-
   .dashboard-grid {
     display: grid;
     grid-template-columns:
@@ -1007,11 +961,6 @@
   }
 
   @media (max-width: 1180px) {
-    .metrics {
-      grid-template-columns:
-        repeat(2, minmax(0, 1fr));
-    }
-
     .workspace-grid,
     .dashboard-grid {
       grid-template-columns: 1fr;
@@ -1032,18 +981,9 @@
       flex: 1;
     }
 
-    .metrics {
-      grid-template-columns: 1fr;
-    }
-
     .upload-section,
-    .project-panel,
     .empty-dashboard {
       padding: 22px;
-    }
-
-    .project-header {
-      flex-direction: column;
     }
   }
 </style>
