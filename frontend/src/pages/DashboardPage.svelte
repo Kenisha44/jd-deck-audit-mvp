@@ -22,6 +22,9 @@
     duplicateAudit
   } from '../lib/database/auditService.js';
 
+  import ExecutiveReport
+  from '../components/report/ExecutiveReport.svelte';
+
   let selectedFile = null;
   let loading = false;
   let error = '';
@@ -58,9 +61,17 @@
     error
   );
 
-  onMount(async () => {
-    await refreshCloudAudits();
-  });
+ onMount(async () => {
+  await refreshCloudAudits();
+
+ 
+  return () => {
+    window.removeEventListener(
+      'afterprint',
+      handleAfterPrint
+    );
+  };
+});
 
   onDestroy(() => {
     clearProgressTimers();
@@ -717,12 +728,290 @@
   }
 
   function exportReport() {
-    window.print();
+  if (!audit) {
+    error =
+      'Run or open an audit before exporting a report.';
+    return;
   }
+
+  const report =
+    document.getElementById('executive-report');
+
+  if (!report) {
+    error =
+      'The executive report is not ready yet.';
+    return;
+  }
+
+  error = '';
+
+  const oldFrame =
+    document.getElementById(
+      'jd-print-frame'
+    );
+
+  if (oldFrame) {
+    oldFrame.remove();
+  }
+
+  const printFrame =
+    document.createElement('iframe');
+
+  printFrame.id =
+    'jd-print-frame';
+
+  printFrame.setAttribute(
+    'aria-hidden',
+    'true'
+  );
+
+  Object.assign(
+    printFrame.style,
+    {
+      position: 'fixed',
+      right: '0',
+      bottom: '0',
+      width: '1px',
+      height: '1px',
+      border: '0',
+      opacity: '0',
+      pointerEvents: 'none'
+    }
+  );
+
+  document.body.appendChild(
+    printFrame
+  );
+
+  const frameDocument =
+    printFrame.contentDocument ||
+    printFrame.contentWindow?.document;
+
+  if (!frameDocument) {
+    printFrame.remove();
+
+    error =
+      'The print document could not be created.';
+
+    return;
+  }
+
+  const styles =
+    Array.from(
+      document.querySelectorAll(
+        'style, link[rel="stylesheet"]'
+      )
+    )
+      .map(node => node.outerHTML)
+      .join('\n');
+
+  frameDocument.open();
+
+  frameDocument.write(`
+    <!doctype html>
+
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+
+        <base href="${document.baseURI}" />
+
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1"
+        />
+
+        <title>
+          ${escapeHtml(
+            audit.deckName ||
+            'JD Executive Report'
+          )}
+        </title>
+
+        ${styles}
+
+        <style>
+          @page {
+            size: A4;
+            margin: 12mm;
+          }
+
+          :root {
+            color-scheme: light;
+
+            --bg: #ffffff;
+            --background: #ffffff;
+            --panel: #ffffff;
+            --surface: #f8fafc;
+            --surface-hover: #eef2f7;
+
+            --text: #111827;
+            --text-soft: #334155;
+            --muted: #64748b;
+
+            --border: #cbd5e1;
+            --border-strong: #94a3b8;
+
+            --blue: #2563eb;
+            --teal: #038a8e;
+            --aqua: #00b6b2;
+            --orange: #fe5b1a;
+            --soft-orange: #ff9559;
+
+            --success: #15803d;
+            --success-soft: #f0fdf4;
+            --success-border: #86efac;
+
+            --warning: #b45309;
+            --warning-soft: #fffbeb;
+            --warning-border: #fcd34d;
+
+            --danger: #b91c1c;
+            --danger-soft: #fef2f2;
+            --danger-border: #fca5a5;
+
+            --info: #1d4ed8;
+            --info-soft: #eff6ff;
+            --info-border: #93c5fd;
+
+            --shadow-soft: none;
+          }
+
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          html,
+          body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            min-height: auto;
+            background: #ffffff !important;
+            color: #111827 !important;
+          }
+
+          body {
+            font-family:
+              Inter,
+              Arial,
+              sans-serif;
+          }
+
+          .print-page {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+          }
+
+          .executive-report {
+            display: grid !important;
+            width: 100% !important;
+            margin: 0 !important;
+            color: #111827 !important;
+            background: #ffffff !important;
+          }
+
+          .report-hero,
+          .report-section,
+          .report-footer {
+            background: #ffffff !important;
+            color: #111827 !important;
+            box-shadow: none !important;
+          }
+
+          .report-hero,
+          .report-section,
+          .report-footer,
+          .priority-item,
+          .recommendation-section,
+          .metrics-grid,
+          .two-column {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .no-print,
+          button {
+            display: none !important;
+          }
+        </style>
+      </head>
+
+      <body>
+        <main class="print-page">
+          ${report.outerHTML}
+        </main>
+      </body>
+    </html>
+  `);
+
+  frameDocument.close();
+
+  const printWhenReady =
+    async () => {
+      try {
+        if (
+          frameDocument.fonts?.ready
+        ) {
+          await frameDocument.fonts.ready;
+        }
+
+        await new Promise(resolve =>
+          setTimeout(resolve, 700)
+        );
+
+        printFrame.contentWindow?.focus();
+        printFrame.contentWindow?.print();
+
+        /*
+         * Do not remove the iframe immediately.
+         * Edge may still need it while rendering
+         * the print preview.
+         */
+        setTimeout(() => {
+          printFrame.remove();
+        }, 60000);
+      } catch (printError) {
+        console.error(
+          'Report printing failed:',
+          printError
+        );
+
+        printFrame.remove();
+
+        error =
+          'The report could not be opened for printing.';
+      }
+    };
+
+  if (
+    frameDocument.readyState ===
+    'complete'
+  ) {
+    printWhenReady();
+  } else {
+    printFrame.onload =
+      printWhenReady;
+  }
+}
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
 </script>
 
 <section class="dashboard-page">
-  <header class="dashboard-header">
+  <header class="dashboard-header no-print">
     <div>
       <p class="eyebrow accent">
         JD Workspace
@@ -767,18 +1056,18 @@
 
   {#if saveMessage}
     <p
-      class="save-message"
+      class="save-message no-print"
       role="status"
     >
       {saveMessage}
     </p>
   {/if}
 
-  <DashboardMetrics
-    audits={cloudAudits}
-  />
+  <div class="no-print">
+  <DashboardMetrics audits={cloudAudits} />
+</div>
 
-  <div class="workspace-grid">
+  <div class="workspace-grid no-print">
     <section class="upload-section panel sharp-panel">
       <div class="mode-tabs">
         <button
@@ -956,14 +1245,16 @@
   </div>
 
   {#if loading}
+  <div class="no-print">
     <AuditProgress
       stage={auditStage}
       progress={auditProgress}
     />
-  {/if}
+  </div>
+{/if}
 
   {#if audit && !loading}
-    <div class="completion-banner panel sharp-panel">
+    <div class="completion-banner panel sharp-panel no-print">
       <div class="completion-icon">
         ✓
       </div>
@@ -996,8 +1287,11 @@
         </span>
       </div>
     </div>
-
-    <div class="dashboard-grid">
+<ExecutiveReport
+  {audit}
+  onExport={exportReport}
+/>
+    <div class="dashboard-grid no-print">
       <div class="dashboard-column">
         <PresentationDNA
           dna={audit.dna}
@@ -1349,4 +1643,185 @@
       padding: 22px;
     }
   }
+  /* =========================================================
+   LAUNCH POLISH — COMPACT DASHBOARD
+   ========================================================= */
+
+.dashboard-page {
+  gap: 18px;
+}
+
+.dashboard-header {
+  gap: 18px;
+  padding-bottom: 2px;
+}
+
+.dashboard-header h1 {
+  font-size: clamp(30px, 3.5vw, 42px);
+}
+
+.dashboard-description {
+  margin-top: 5px;
+  line-height: 1.45;
+}
+
+.dashboard-actions {
+  gap: 10px;
+}
+
+.save-message {
+  padding: 10px 12px;
+}
+
+.workspace-grid {
+  gap: 16px;
+  grid-template-columns:
+    minmax(0, 1.45fr)
+    minmax(300px, 0.55fr);
+}
+
+.workspace-side {
+  gap: 16px;
+}
+
+.upload-section {
+  gap: 16px;
+  padding: 22px;
+}
+
+.section-copy {
+  gap: 5px;
+}
+
+.section-copy h2,
+.empty-dashboard h2,
+.completion-banner h2 {
+  font-size: 24px;
+}
+
+.section-copy p {
+  line-height: 1.5;
+}
+
+.mode-tabs {
+  gap: 8px;
+}
+
+.mode-tabs button {
+  padding: 10px 14px;
+}
+
+.upload-box,
+.paste-box {
+  gap: 10px;
+}
+
+.upload-box label {
+  min-height: 125px;
+  padding: 20px;
+}
+
+.upload-box label strong {
+  font-size: 17px;
+}
+
+.paste-box input,
+.paste-box textarea {
+  padding: 12px;
+}
+
+.completion-banner {
+  gap: 16px;
+  padding: 20px;
+}
+
+.completion-icon {
+  width: 44px;
+  height: 44px;
+  font-size: 21px;
+}
+
+.completion-score {
+  min-width: 100px;
+  padding: 12px;
+}
+
+.completion-score strong {
+  font-size: 32px;
+}
+
+.dashboard-grid {
+  gap: 16px;
+}
+
+.dashboard-column {
+  gap: 16px;
+}
+
+.empty-dashboard {
+  min-height: 230px;
+  gap: 10px;
+  padding: 26px;
+}
+
+@media (max-width: 1180px) {
+  .workspace-grid,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-page {
+    gap: 14px;
+  }
+
+  .upload-section,
+  .empty-dashboard {
+    padding: 18px;
+  }
+}
+
+/* Final report alignment */
+
+.dashboard-page {
+  gap: 16px;
+}
+
+.completion-banner {
+  width: 100%;
+  grid-template-columns:
+    auto minmax(0, 1fr) auto;
+}
+
+#executive-report {
+  width: 100%;
+  max-width: none;
+}
+
+.executive-report {
+  width: 100%;
+  max-width: none;
+}
+
+.dashboard-grid {
+  margin-top: 0;
+}
+
+@media (min-width: 1181px) {
+  .executive-report {
+    grid-column: 1 / -1;
+  }
+}
+
+.completion-banner {
+  width: 100%;
+}
+
+.executive-report {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
 </style>

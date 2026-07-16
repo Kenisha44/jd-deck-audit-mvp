@@ -1661,3 +1661,26 @@
       display: none !important;
     }
   }
+
+  /* =========================================================
+   EXECUTIVE REPORT PRINT MODE
+   ========================================================= */
+
+@page {
+  size: A4;
+  margin: 14mm;
+}
+
+@media print {
+  html,
+  body {
+    width: 100%;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+
+
+}
