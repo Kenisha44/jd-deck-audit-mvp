@@ -1,9 +1,19 @@
 <script>
   import ExecutiveReadiness
     from './ExecutiveReadiness.svelte';
+ import {
+    createEventDispatcher
+  } from 'svelte';
 
   export let audit = null;
   export let onExport = () => {};
+
+ const dispatch =
+    createEventDispatcher();
+
+  function requestExport() {
+    dispatch('export');
+  }
 
   $: dna = audit?.dna || {};
   $: healthReport =
@@ -155,11 +165,12 @@
         </div>
 
         <button
-          class="export-button no-print"
-          on:click={onExport}
-        >
-          Export PDF
-        </button>
+  type="button"
+  class="export-button no-print"
+  on:click={requestExport}
+>
+  Export PDF
+</button>
       </div>
 
       <div class="cover-main">

@@ -27,23 +27,24 @@ export async function initializeAuth() {
 
   session.set(currentSession);
   user.set(currentSession?.user ?? null);
-  authLoading.set(false);
- 
+
   if (currentSession?.user) {
     await ensureProfile(currentSession.user);
   }
 
   supabase.auth.onAuthStateChange(
-    (_event, nextSession) => {
+    async (_event, nextSession) => {
       session.set(nextSession);
       user.set(nextSession?.user ?? null);
       authLoading.set(false);
+
+      if (nextSession?.user) {
+        await ensureProfile(nextSession.user);
+      }
     }
   );
-if (nextSession?.user) {
-  ensureProfile(nextSession.user);
-};
 
+  authLoading.set(false);
 }
 
 

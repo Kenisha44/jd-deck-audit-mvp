@@ -19,6 +19,14 @@
     signOut
   } from './stores/authStore.js';
 
+import NewAuditPage
+  from './pages/NewAuditPage.svelte';
+
+
+import SavedAuditsPage
+from './pages/SavedAuditsPage.svelte';
+
+  let latestAudit = null;
   let activePage = 'login';
   let darkMode = false;
 
@@ -50,6 +58,17 @@ if (window.location.hash.includes('reset-password')) {
     ? 'dashboard'
     : 'login';
 }
+
+function handleOpenAudit(audit){
+
+    latestAudit = audit;
+
+}
+
+function handleAuditComplete(completedAudit) {
+  latestAudit = completedAudit;
+}
+
   function applyTheme() {
     document.documentElement.dataset.theme =
       darkMode ? 'dark' : 'light';
@@ -201,16 +220,26 @@ if (window.location.hash.includes('reset-password')) {
     {toggleDarkMode}
   >
     {#if activePage === 'dashboard'}
-      <DashboardPage />
+  <DashboardPage
+    initialAudit={latestAudit}
+  />
 
     {:else if activePage === 'new-audit'}
-      <DashboardPage />
+  <NewAuditPage
+    setActivePage={setActivePage}
+    onAuditComplete={handleAuditComplete}
+  />
 
     {:else if activePage === 'saved-audits'}
-      <ComingSoon
-        title="Saved Audits"
-        description="Your cloud-saved audits will appear here after database integration."
-      />
+
+    <SavedAuditsPage
+
+        setActivePage={setActivePage}
+
+        onOpenAudit={handleOpenAudit}
+
+    />
+
 
     {:else if activePage === 'templates'}
       <ComingSoon

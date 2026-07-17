@@ -1,17 +1,15 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
   import { API_BASE_URL } from '../lib/config.js';
-
+  import {
+    onDestroy,
+    onMount
+  } from 'svelte';
+  
+  export let initialAudit = null;
+  
   import AuditProgress from '../components/common/AuditProgress.svelte';
-  import AuditWorkspace from '../components/workspace/AuditWorkspace.svelte';
   import DashboardMetrics from '../components/dashboard/DashboardMetrics.svelte';
-  import SavedAuditsPanel from '../components/dashboard/SavedAuditsPanel.svelte';
-  import PresentationDNA from '../components/dashboard/PresentationDNA.svelte';
-  import SlideNavigator from '../components/dashboard/SlideNavigator.svelte';
-  import PriorityQueue from '../components/dashboard/PriorityQueue.svelte';
-  import ExecutiveHealthReport from '../components/dashboard/ExecutiveHealthReport.svelte';
-  import SelectedSlideAnalysis from '../components/dashboard/SelectedSlideAnalysis.svelte';
-
+  
   import { user } from '../stores/authStore.js';
 
   import {
@@ -25,10 +23,34 @@
   import ExecutiveReport
   from '../components/report/ExecutiveReport.svelte';
 
+import DashboardHeader
+from '../components/dashboard/layout/DashboardHeader.svelte';
+
+import UploadPanel
+from '../components/dashboard/sections/UploadPanel.svelte';
+
+import CompletionBanner
+from '../components/dashboard/sections/CompletionBanner.svelte';
+
+import EmptyDashboard
+from '../components/dashboard/empty/EmptyDashboard.svelte';
+
+import WorkspaceSidebar
+  from '../components/dashboard/sections/WorkspaceSidebar.svelte';
+
+import ResultsDashboard
+  from '../components/dashboard/results/ResultsDashboard.svelte';
+
+import {
+  printExecutiveReport,
+  handleAfterPrint
+}
+from '../lib/dashboard/printReport.js';
+
   let selectedFile = null;
   let loading = false;
   let error = '';
-  let audit = null;
+  let audit = initialAudit;
 
   let activeMode = 'upload';
   let activeSlideIndex = 0;
@@ -49,6 +71,17 @@
 
   const MAX_FILE_SIZE_BYTES =
     MAX_FILE_SIZE_MB * 1024 * 1024;
+$: if (
+  initialAudit &&
+  initialAudit !== audit
+) {
+  audit = initialAudit;
+  selectedFile = null;
+  activeSlideIndex = 0;
+  error = '';
+  saveMessage =
+    'Your new executive audit is ready.';
+}
 
   $: selectedSlide =
     audit?.slides?.[activeSlideIndex] ||
@@ -727,333 +760,35 @@
     activeSlideIndex = index;
   }
 
-  function exportReport() {
-  if (!audit) {
-    error =
-      'Run or open an audit before exporting a report.';
-    return;
-  }
+  
 
-  const report =
-    document.getElementById('executive-report');
+  async function exportReport() {
+    error = '';
 
-  if (!report) {
-    error =
-      'The executive report is not ready yet.';
-    return;
-  }
+    await printExecutiveReport({
+      audit,
 
-  error = '';
+      reportElement:
+        document.getElementById(
+          'executive-report'
+        ),
 
-  const oldFrame =
-    document.getElementById(
-      'jd-print-frame'
-    );
-
-  if (oldFrame) {
-    oldFrame.remove();
-  }
-
-  const printFrame =
-    document.createElement('iframe');
-
-  printFrame.id =
-    'jd-print-frame';
-
-  printFrame.setAttribute(
-    'aria-hidden',
-    'true'
-  );
-
-  Object.assign(
-    printFrame.style,
-    {
-      position: 'fixed',
-      right: '0',
-      bottom: '0',
-      width: '1px',
-      height: '1px',
-      border: '0',
-      opacity: '0',
-      pointerEvents: 'none'
-    }
-  );
-
-  document.body.appendChild(
-    printFrame
-  );
-
-  const frameDocument =
-    printFrame.contentDocument ||
-    printFrame.contentWindow?.document;
-
-  if (!frameDocument) {
-    printFrame.remove();
-
-    error =
-      'The print document could not be created.';
-
-    return;
-  }
-
-  const styles =
-    Array.from(
-      document.querySelectorAll(
-        'style, link[rel="stylesheet"]'
-      )
-    )
-      .map(node => node.outerHTML)
-      .join('\n');
-
-  frameDocument.open();
-
-  frameDocument.write(`
-    <!doctype html>
-
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-
-        <base href="${document.baseURI}" />
-
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1"
-        />
-
-        <title>
-          ${escapeHtml(
-            audit.deckName ||
-            'JD Executive Report'
-          )}
-        </title>
-
-        ${styles}
-
-        <style>
-          @page {
-            size: A4;
-            margin: 12mm;
-          }
-
-          :root {
-            color-scheme: light;
-
-            --bg: #ffffff;
-            --background: #ffffff;
-            --panel: #ffffff;
-            --surface: #f8fafc;
-            --surface-hover: #eef2f7;
-
-            --text: #111827;
-            --text-soft: #334155;
-            --muted: #64748b;
-
-            --border: #cbd5e1;
-            --border-strong: #94a3b8;
-
-            --blue: #2563eb;
-            --teal: #038a8e;
-            --aqua: #00b6b2;
-            --orange: #fe5b1a;
-            --soft-orange: #ff9559;
-
-            --success: #15803d;
-            --success-soft: #f0fdf4;
-            --success-border: #86efac;
-
-            --warning: #b45309;
-            --warning-soft: #fffbeb;
-            --warning-border: #fcd34d;
-
-            --danger: #b91c1c;
-            --danger-soft: #fef2f2;
-            --danger-border: #fca5a5;
-
-            --info: #1d4ed8;
-            --info-soft: #eff6ff;
-            --info-border: #93c5fd;
-
-            --shadow-soft: none;
-          }
-
-          *,
-          *::before,
-          *::after {
-            box-sizing: border-box;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-
-          html,
-          body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            min-height: auto;
-            background: #ffffff !important;
-            color: #111827 !important;
-          }
-
-          body {
-            font-family:
-              Inter,
-              Arial,
-              sans-serif;
-          }
-
-          .print-page {
-            width: 100%;
-            margin: 0;
-            padding: 0;
-          }
-
-          .executive-report {
-            display: grid !important;
-            width: 100% !important;
-            margin: 0 !important;
-            color: #111827 !important;
-            background: #ffffff !important;
-          }
-
-          .report-hero,
-          .report-section,
-          .report-footer {
-            background: #ffffff !important;
-            color: #111827 !important;
-            box-shadow: none !important;
-          }
-
-          .report-hero,
-          .report-section,
-          .report-footer,
-          .priority-item,
-          .recommendation-section,
-          .metrics-grid,
-          .two-column {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-
-          .no-print,
-          button {
-            display: none !important;
-          }
-        </style>
-      </head>
-
-      <body>
-        <main class="print-page">
-          ${report.outerHTML}
-        </main>
-      </body>
-    </html>
-  `);
-
-  frameDocument.close();
-
-  const printWhenReady =
-    async () => {
-      try {
-        if (
-          frameDocument.fonts?.ready
-        ) {
-          await frameDocument.fonts.ready;
-        }
-
-        await new Promise(resolve =>
-          setTimeout(resolve, 700)
-        );
-
-        printFrame.contentWindow?.focus();
-        printFrame.contentWindow?.print();
-
-        /*
-         * Do not remove the iframe immediately.
-         * Edge may still need it while rendering
-         * the print preview.
-         */
-        setTimeout(() => {
-          printFrame.remove();
-        }, 60000);
-      } catch (printError) {
-        console.error(
-          'Report printing failed:',
-          printError
-        );
-
-        printFrame.remove();
-
-        error =
-          'The report could not be opened for printing.';
+      setError: message => {
+        error = message;
       }
-    };
-
-  if (
-    frameDocument.readyState ===
-    'complete'
-  ) {
-    printWhenReady();
-  } else {
-    printFrame.onload =
-      printWhenReady;
+    });
   }
-}
 
-function escapeHtml(value = '') {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
 </script>
 
 <section class="dashboard-page">
-  <header class="dashboard-header no-print">
-    <div>
-      <p class="eyebrow accent">
-        JD Workspace
-      </p>
-
-      <h1>
-        Deck Audit Dashboard
-      </h1>
-
-      <p class="dashboard-description">
-        Upload a presentation, paste slide
-        copy, or run the demonstration audit.
-      </p>
-    </div>
-
-    <div class="dashboard-actions">
-      <button
-        class="secondary-link"
-        on:click={saveCurrentAudit}
-        disabled={
-          !audit ||
-          savingAudit ||
-          loading
-        }
-      >
-        {savingAudit
-          ? 'Saving...'
-          : 'Save Audit'}
-      </button>
-
-      <button
-        class="primary-button"
-        on:click={runDemoAudit}
-        disabled={loading}
-      >
-        {loading
-          ? 'Running Audit...'
-          : 'Run Demo Audit'}
-      </button>
-    </div>
-  </header>
-
+<DashboardHeader
+    {loading}
+    {savingAudit}
+    {audit}
+    {runDemoAudit}
+    {saveCurrentAudit}
+/>
   {#if saveMessage}
     <p
       class="save-message no-print"
@@ -1068,180 +803,38 @@ function escapeHtml(value = '') {
 </div>
 
   <div class="workspace-grid no-print">
-    <section class="upload-section panel sharp-panel">
-      <div class="mode-tabs">
-        <button
-          class:active={
-            activeMode === 'upload'
-          }
-          on:click={() =>
-            (activeMode = 'upload')}
-          disabled={loading}
-        >
-          Upload Deck
-        </button>
+    <UploadPanel
+    bind:activeMode
+    bind:slideTitle
+    bind:slideText
 
-        <button
-          class:active={
-            activeMode === 'paste'
-          }
-          on:click={() =>
-            (activeMode = 'paste')}
-          disabled={loading}
-        >
-          Paste Text
-        </button>
-      </div>
+    {loading}
+    {selectedFile}
+    {error}
 
-      {#if activeMode === 'upload'}
-        <div class="section-copy">
-          <p class="eyebrow accent">
-            New Audit
-          </p>
+    {handleFileChange}
+    {submitDeck}
+    {submitText}
 
-          <h2>
-            Upload a PPTX or PDF
-          </h2>
+    setUploadMode={() => activeMode = 'upload'}
+    setPasteMode={() => activeMode = 'paste'}
+/>
 
-          <p>
-            Upload a presentation to receive
-            slide-level feedback, category
-            scores, and an executive health
-            report.
-          </p>
-        </div>
+   <WorkspaceSidebar
+  {deckMetadata}
+  {selectedSlide}
+  {audit}
+  {exportReport}
 
-        <div class="upload-box">
-          <input
-            id="deck-file"
-            type="file"
-            accept=".pptx,.pdf"
-            on:change={handleFileChange}
-            disabled={loading}
-          />
+  audits={cloudAudits}
+  loading={loadingCloudAudits}
 
-          <label
-            for="deck-file"
-            class:disabled={loading}
-          >
-            <strong>
-              {selectedFile
-                ? selectedFile.name
-                : 'Choose presentation file'}
-            </strong>
-
-            <span>
-              PPTX or PDF · Maximum 15MB ·
-              Maximum 30 slides
-            </span>
-          </label>
-
-          <button
-            class="primary-button"
-            on:click={submitDeck}
-            disabled={
-              loading ||
-              !selectedFile
-            }
-          >
-            {loading
-              ? 'Auditing Presentation...'
-              : 'Generate Executive Audit'}
-          </button>
-        </div>
-      {:else}
-        <div class="section-copy">
-          <p class="eyebrow accent">
-            Slide Clarity Mode
-          </p>
-
-          <h2>
-            Audit pasted slide copy
-          </h2>
-
-          <p>
-            Test a headline, slide, executive
-            summary, or group of presentation
-            bullets.
-          </p>
-        </div>
-
-        <div class="paste-box">
-          <input
-            bind:value={slideTitle}
-            placeholder="Slide title"
-            disabled={loading}
-          />
-
-          <textarea
-            bind:value={slideText}
-            rows="9"
-            placeholder="Paste slide text, bullets, or speaker notes..."
-            disabled={loading}
-          ></textarea>
-
-          <button
-            class="primary-button"
-            on:click={submitText}
-            disabled={
-              loading ||
-              !slideText.trim()
-            }
-          >
-            {loading
-              ? 'Auditing Text...'
-              : 'Audit Slide Copy'}
-          </button>
-        </div>
-      {/if}
-
-      {#if error}
-        <div
-          class="error-state"
-          role="alert"
-        >
-          <strong>
-            We could not complete the audit.
-          </strong>
-
-          <p>{error}</p>
-
-          <ul>
-            <li>
-              Confirm the backend is running.
-            </li>
-
-            <li>
-              Check that the presentation is
-              not corrupted or password protected.
-            </li>
-
-            <li>
-              Try a smaller PPTX file.
-            </li>
-          </ul>
-        </div>
-      {/if}
-    </section>
-
-    <div class="workspace-side">
-      <AuditWorkspace
-        deckMetadata={deckMetadata}
-        selectedSlide={selectedSlide}
-        audit={audit}
-        exportReport={exportReport}
-      />
-
-      <SavedAuditsPanel
-        audits={cloudAudits}
-        loading={loadingCloudAudits}
-        onRefresh={refreshCloudAudits}
-        onOpen={loadCloudAudit}
-        onRename={handleRenameAudit}
-        onDuplicate={handleDuplicateAudit}
-        onDelete={handleDeleteAudit}
-      />
-    </div>
+  onRefresh={refreshCloudAudits}
+  onOpen={loadCloudAudit}
+  onRename={handleRenameAudit}
+  onDuplicate={handleDuplicateAudit}
+  onDelete={handleDeleteAudit}
+/> 
   </div>
 
   {#if loading}
@@ -1254,108 +847,23 @@ function escapeHtml(value = '') {
 {/if}
 
   {#if audit && !loading}
-    <div class="completion-banner panel sharp-panel no-print">
-      <div class="completion-icon">
-        ✓
-      </div>
-
-      <div>
-        <p class="eyebrow accent">
-          Audit Complete
-        </p>
-
-        <h2>
-          Executive analysis generated
-        </h2>
-
-        <p>
-          JD reviewed
-          {audit.slides?.length || 0}
-          slides and created Presentation DNA,
-          priority recommendations, and an
-          Executive Health Report.
-        </p>
-      </div>
-
-      <div class="completion-score">
-        <strong>
-          {audit.overall ?? '--'}
-        </strong>
-
-        <span>
-          Overall Score
-        </span>
-      </div>
-    </div>
+    <CompletionBanner {audit} />
 <ExecutiveReport
   {audit}
-  onExport={exportReport}
+   on:export={exportReport}
 />
-    <div class="dashboard-grid no-print">
-      <div class="dashboard-column">
-        <PresentationDNA
-          dna={audit.dna}
-        />
-
-        <PriorityQueue
-          priorityQueue={
-            audit.priorityQueue
-          }
-        />
-      </div>
-
-      <div class="dashboard-column">
-        <SlideNavigator
-          slides={audit.slides}
-          selectedSlide={selectedSlide}
-          activeSlideIndex={
-            activeSlideIndex
-          }
-          setActiveSlide={
-            setActiveSlide
-          }
-        />
-
-        <SelectedSlideAnalysis
-          slide={selectedSlide}
-        />
-
-        <ExecutiveHealthReport
-          audit={audit}
-          exportReport={exportReport}
-        />
-      </div>
-    </div>
+    <ResultsDashboard
+  {audit}
+  {selectedSlide}
+  {activeSlideIndex}
+  {setActiveSlide}
+  {exportReport}
+/>
   {:else if !loading}
-    <section class="empty-dashboard panel sharp-panel">
-      <div class="empty-icon">
-        JD
-      </div>
-
-      <p class="eyebrow accent">
-        Audit Results
-      </p>
-
-      <h2>
-        Your next executive presentation starts here
-      </h2>
-
-      <p>
-        Run the demo, upload a presentation,
-        or paste slide copy to generate
-        Presentation DNA, priority fixes,
-        slide-level findings, and an
-        Executive Health Report.
-      </p>
-
-      <button
-        class="secondary-link"
-        on:click={runDemoAudit}
-        disabled={loading}
-      >
-        Preview with Demo Audit
-      </button>
-    </section>
+   <EmptyDashboard
+  {loading}
+  {runDemoAudit}
+/>
   {/if}
 </section>
 
@@ -1414,11 +922,6 @@ function escapeHtml(value = '') {
     align-items: start;
   }
 
-  .workspace-side {
-    display: grid;
-    gap: 24px;
-  }
-
   .upload-section {
     display: grid;
     gap: 24px;
@@ -1431,12 +934,7 @@ function escapeHtml(value = '') {
   }
 
   .section-copy h2,
-  .empty-dashboard h2,
-  .completion-banner h2 {
-    margin: 0;
-    font-size: 27px;
-    letter-spacing: -0.03em;
-  }
+ 
 
   .section-copy p {
     color: var(--muted);
@@ -1520,94 +1018,6 @@ function escapeHtml(value = '') {
     padding-left: 20px;
   }
 
-  .completion-banner {
-    display: grid;
-    grid-template-columns:
-      auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 20px;
-    padding: 26px;
-    background: var(--panel);
-    color: var(--text);
-  }
-
-  .completion-icon {
-    width: 52px;
-    height: 52px;
-    display: grid;
-    place-items: center;
-    background: var(--success);
-    color: white;
-    font-size: 25px;
-    font-weight: 900;
-  }
-
-  .completion-banner p:last-child {
-    margin-top: 8px;
-    color: var(--muted);
-  }
-
-  .completion-score {
-    min-width: 112px;
-    display: grid;
-    justify-items: center;
-    gap: 3px;
-    padding: 14px;
-    border: 1px solid
-      var(--border);
-    background: var(--surface);
-  }
-
-  .completion-score strong {
-    color: var(--orange);
-    font-size: 38px;
-    line-height: 1;
-  }
-
-  .completion-score span {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 750;
-  }
-
-  .dashboard-grid {
-    display: grid;
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr));
-    gap: 24px;
-    align-items: start;
-  }
-
-  .dashboard-column {
-    display: grid;
-    gap: 24px;
-  }
-
-  .empty-dashboard {
-    min-height: 320px;
-    display: grid;
-    place-content: center;
-    justify-items: start;
-    gap: 14px;
-    padding: 36px;
-  }
-
-  .empty-icon {
-    width: 54px;
-    height: 54px;
-    display: grid;
-    place-items: center;
-    background: var(--blue);
-    color: white;
-    font-weight: 900;
-  }
-
-  .empty-dashboard p {
-    max-width: 720px;
-    color: var(--muted);
-    line-height: 1.7;
-  }
-
   @media (max-width: 1180px) {
     .workspace-grid,
     .dashboard-grid {
@@ -1629,19 +1039,9 @@ function escapeHtml(value = '') {
       flex: 1;
     }
 
-    .completion-banner {
-      grid-template-columns: 1fr;
-      justify-items: start;
-    }
-
-    .completion-score {
-      width: 100%;
-    }
-
-    .upload-section,
-    .empty-dashboard {
-      padding: 22px;
-    }
+    
+    .upload-section{
+  }
   }
   /* =========================================================
    LAUNCH POLISH — COMPACT DASHBOARD
@@ -1693,10 +1093,8 @@ function escapeHtml(value = '') {
   gap: 5px;
 }
 
-.section-copy h2,
-.empty-dashboard h2,
-.completion-banner h2 {
-  font-size: 24px;
+.section-copy h2 {
+
 }
 
 .section-copy p {
@@ -1730,25 +1128,6 @@ function escapeHtml(value = '') {
   padding: 12px;
 }
 
-.completion-banner {
-  gap: 16px;
-  padding: 20px;
-}
-
-.completion-icon {
-  width: 44px;
-  height: 44px;
-  font-size: 21px;
-}
-
-.completion-score {
-  min-width: 100px;
-  padding: 12px;
-}
-
-.completion-score strong {
-  font-size: 32px;
-}
 
 .dashboard-grid {
   gap: 16px;
@@ -1758,11 +1137,6 @@ function escapeHtml(value = '') {
   gap: 16px;
 }
 
-.empty-dashboard {
-  min-height: 230px;
-  gap: 10px;
-  padding: 26px;
-}
 
 @media (max-width: 1180px) {
   .workspace-grid,
@@ -1776,9 +1150,8 @@ function escapeHtml(value = '') {
     gap: 14px;
   }
 
-  .upload-section,
-  .empty-dashboard {
-    padding: 18px;
+  .upload-section{
+
   }
 }
 
@@ -1788,11 +1161,6 @@ function escapeHtml(value = '') {
   gap: 16px;
 }
 
-.completion-banner {
-  width: 100%;
-  grid-template-columns:
-    auto minmax(0, 1fr) auto;
-}
 
 #executive-report {
   width: 100%;
@@ -1814,9 +1182,6 @@ function escapeHtml(value = '') {
   }
 }
 
-.completion-banner {
-  width: 100%;
-}
 
 .executive-report {
   width: 100%;
